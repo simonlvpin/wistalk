@@ -1338,7 +1338,7 @@ async function ensureAdminUser() {
     initialPasswordGeneratedAt: now,
   };
   await putUser(admin);
-  sessionStorage.setItem(ADMIN_BOOTSTRAP_PASSWORD_KEY, bootstrapPassword);
+  localStorage.setItem(ADMIN_BOOTSTRAP_PASSWORD_KEY, bootstrapPassword);
   return admin;
 }
 
@@ -3021,7 +3021,7 @@ async function restoreSession() {
   const session = readSession();
   if (!session?.emailKey) {
     renderAuthGate();
-    const bootstrapPassword = sessionStorage.getItem(ADMIN_BOOTSTRAP_PASSWORD_KEY);
+    const bootstrapPassword = localStorage.getItem(ADMIN_BOOTSTRAP_PASSWORD_KEY);
     if (bootstrapPassword) {
       showAuthMessage(`首次初始化管理员账号：${ADMIN_EMAIL}，本次初始密码：${bootstrapPassword}。登录后请立即修改密码。`, "success");
     }
@@ -3045,6 +3045,52 @@ async function restoreSession() {
   state.deepseekTestSignature = "";
   await logEvent("visit");
   await enterApp();
+}
+
+async function rescueAdminPassword() {
+  const ok = await confirmAction({
+    title: "管理员密码救援",
+    message: "确认重新生成当前浏览器中的超级管理员密码吗？旧密码将失效。",
+    confirmText: "确认重置",
+    tone: "danger",
+  });
+  if (!ok) {
+    return;
+  }
+  const password = randomPassword();
+  const hashed = await hashPassword(password);
+  const now = new Date().toISOString();
+  const admin = await getUser(ADMIN_EMAIL);
+  const updated = admin
+    ? {
+        ...admin,
+        status: "active",
+        passwordHash: hashed.hash,
+        salt: hashed.salt,
+        passwordChangedAt: now,
+        initialPasswordGeneratedAt: now,
+      }
+    : {
+        email: ADMIN_EMAIL,
+        emailKey: ADMIN_EMAIL_KEY,
+        role: "admin",
+        status: "active",
+        passwordHash: hashed.hash,
+        salt: hashed.salt,
+        createdAt: now,
+        registeredAt: now,
+        approvedAt: now,
+        lastLoginAt: "",
+        loginCount: 0,
+        visitCount: 0,
+        passwordChangedAt: "",
+        pendingReset: false,
+        resetRequestedAt: "",
+        initialPasswordGeneratedAt: now,
+      };
+  await putUser(updated);
+  localStorage.setItem(ADMIN_BOOTSTRAP_PASSWORD_KEY, password);
+  showAuthMessage(`管理员新密码已生成：${password}。请先登录再修改密码。`, "success");
 }
 
 function renderAuthGate() {
@@ -7972,6 +8018,14 @@ els.loginForm.addEventListener("submit", async (event) => {
     els.loginPassword.value = "";
   } catch (error) {
     showAuthMessage(`登录失败：${error.message}`, "error");
+  }
+});
+
+document.querySelector("#adminRescueBtn")?.addEventListener("click", async () => {
+  try {
+    await rescueAdminPassword();
+  } catch (error) {
+    showAuthMessage(`管理员密码救援失败：${error.message}`, "error");
   }
 });
 
