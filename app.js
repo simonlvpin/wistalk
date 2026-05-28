@@ -1,0 +1,8223 @@
+  const state = {
+  fileName: "",
+  rawText: "",
+  draftUploadItems: [],
+  uploadItems: [],
+  uploadBatchSaved: false,
+  uploadAnalysisCompleted: false,
+  analysis: null,
+  activeTopic: 0,
+  uploadLocked: false,
+  allDocuments: [],
+  documents: [],
+  materialSources: [],
+  materialTypes: [],
+  topicSkills: [],
+  skillNotice: { message: "", tone: "info" },
+  skillRefreshState: { docId: "", percent: 0, message: "" },
+  skillBatchRefresh: {
+    active: false,
+    background: false,
+    completed: false,
+    modalOpen: false,
+    skillTypeId: "",
+    skillVersion: "",
+    selectedIds: [],
+    progressByDoc: {},
+    logs: [],
+  },
+  topicSearch: "",
+  topicSourceFilter: "",
+  topicTypeFilter: "",
+  topicOwnerFilter: "",
+  topicDocFilter: "",
+  topicFavoriteOnly: false,
+  topicPage: 1,
+  topicPageSize: 20,
+  activeTopicRef: null,
+  activeTopicPane: "analysis",
+  activeOriginalKeyword: "",
+  activeMaterialPane: "source",
+  materialSearchComposing: false,
+  materialListSearch: "",
+  materialListSourceFilter: "",
+  materialListTypeFilter: "",
+  materialListOwnerFilter: "",
+  materialFavoriteOnly: false,
+  activeMaterialDocId: "",
+  activeMaterialTopicIndex: 0,
+  activeMaterialSkillVersion: "",
+  users: [],
+  docCategories: [],
+  currentUser: null,
+  currentDocId: "",
+  activeTag: "",
+  activeDocCategory: "",
+  activeOwner: "all",
+  librarySearch: "",
+  libraryTagSearch: "",
+  drillStack: [],
+  categoryTransferSource: "",
+  categoryTransferTarget: "",
+  categoryTransferScope: "all",
+  categoryAdminNotice: { message: "", tone: "info" },
+  lastViewedDocId: "",
+  materialConfigNotice: { message: "", tone: "info" },
+  activeSkillMaterialTypeId: "type-executive-view",
+  recycleUserFilter: "",
+  recycleExpandedDocIds: [],
+  recyclePreview: { type: "", docId: "", topicIndex: 0 },
+  fontSettings: { bodySize: "15px", buttonSize: "14px", titleSize: "24px" },
+  deepseekTestSignature: "",
+  analysisLogs: [],
+  isAnalyzing: false,
+  allowAnalysisBackground: false,
+  analysisAbortController: null,
+};
+
+const DB_NAME = "ceo-speech-learning-db";
+const DB_VERSION = 5;
+const DOC_STORE = "documents";
+const USER_STORE = "users";
+const EVENT_STORE = "events";
+const CATEGORY_STORE = "docCategories";
+const PENDING_UPLOAD_STORE = "pendingUploads";
+const MATERIAL_SOURCES_KEY = "talktoceo-material-sources";
+const MATERIAL_TYPES_KEY = "talktoceo-material-types";
+const ANALYSIS_COMPLETED_REDIRECT_KEY = "talktoceo-analysis-completed-redirect";
+const ANALYSIS_RUNNING_KEY = "talktoceo-analysis-running";
+const SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
+const MAX_UPLOAD_FILES = 10;
+const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+const SYSTEM_VERSIONS = [
+  { version: "v1.8.22", date: "2026-05-28", updatedAt: "2026-05-28T13:08:00+08:00", title: "资料分类键值同步", changes: ["资料来源和资料类型统一按 id/name 键值引用。", "历史材料可按名称反查并补齐资料来源和类型 id。", "材料列表、材料管理、话题筛选和 SKILL 刷新候选统一使用键值解析。"] },
+  { version: "v1.8.21", date: "2026-05-28", updatedAt: "2026-05-28T12:48:00+08:00", title: "材料与话题收藏", changes: ["SKILL 批量刷新提示增加待刷新材料的话题数量。", "材料列表支持收藏材料和只看已收藏材料。", "话题列表支持收藏话题和只看已收藏话题。", "SKILL 刷新时尽量保留已收藏话题标记。"] },
+  { version: "v1.8.20", date: "2026-05-28", updatedAt: "2026-05-28T12:28:00+08:00", title: "SKILL 批量刷新执行器", changes: ["话题 SKILL 页新增按最新版本批量刷新材料入口。", "批量刷新弹窗可勾选未使用最新 SKILL 的材料并集中执行。", "批量执行支持每份材料进度、执行日志和后台继续运行。"] },
+  { version: "v1.8.19", date: "2026-05-28", updatedAt: "2026-05-28T12:08:00+08:00", title: "上传分析 SKILL 展示", changes: ["材料上传待分析清单展示每份材料将使用的 SKILL 名称和版本。", "执行分析进度与日志明确记录当前调用的是哪个 SKILL.md 版本。"] },
+  { version: "v1.8.18", date: "2026-05-28", updatedAt: "2026-05-28T11:58:00+08:00", title: "SKILL 历史版本对比", changes: ["话题 SKILL 版本差异日志改为按相邻版本动态计算。", "话题 SKILL 版本管理复用左右差异对比弹窗。", "新增任意两个历史 SKILL 版本切换对比能力。"] },
+  { version: "v1.8.17", date: "2026-05-28", updatedAt: "2026-05-28T11:42:00+08:00", title: "SKILL 差异对比联动", changes: ["SKILL 新旧版本差异弹窗支持左右内容按匹配行同步滚动。", "材料卡片的新版差异入口展示最新 SKILL 版本缩写。"] },
+  { version: "v1.8.16", date: "2026-05-28", updatedAt: "2026-05-28T11:28:00+08:00", title: "资料类型配置简化", changes: ["资料管理移除分析模板字段。", "资料类型只负责选择材料场景，具体拆解方式由对应的话题 SKILL.md 管理。", "新增或修改资料类型时，同步保持 SKILL 类型联动。"] },
+  { version: "v1.8.15", date: "2026-05-28", updatedAt: "2026-05-28T11:14:58+08:00", title: "材料 SKILL 刷新体验增强", changes: ["材料卡片出现新版 SKILL 时新增差异查看入口。", "新增当前 SKILL 与最新 SKILL 的左右对比弹窗，带行号和差异颜色标注。", "SKILL 刷新时在当前材料卡片内显示执行进度。", "材料详情 SKILL 版本下拉框宽度收敛，切换时同步显示对应应用时间。"] },
+  { version: "v1.8.14", date: "2026-05-28", updatedAt: "2026-05-28T10:59:27+08:00", title: "SKILL 版本差异日志", changes: ["SKILL 版本管理中展示每个版本相对上一版的差异日志。", "发布新 SKILL 版本前会自动对比上一版，并在确认弹窗中展示差异摘要。"] },
+  { version: "v1.8.13", date: "2026-05-28", updatedAt: "2026-05-28T10:52:04+08:00", title: "SKILL 编辑体验优化", changes: ["发布话题 SKILL 新版本按钮改为紧凑宽度。", "SKILL.md 编辑框高度加长，便于编辑长模版。"] },
+  { version: "v1.8.12", date: "2026-05-28", updatedAt: "2026-05-28T10:48:19+08:00", title: "话题卡片展示 SKILL 来源", changes: ["话题列表卡片增加使用的 SKILL 名称和版本。", "话题搜索文本纳入 SKILL 名称，便于按高层视角或会议纪要 SKILL 搜索。"] },
+  { version: "v1.8.11", date: "2026-05-28", updatedAt: "2026-05-28T10:41:02+08:00", title: "配置页表单宽度优化", changes: ["系统配置页账号和大模型表单宽度收敛。", "配置页按钮不再默认撑满整行。", "资料管理表单改为紧凑宽度并左对齐。", "移动端仍保持自适应满宽。"] },
+  { version: "v1.8.10", date: "2026-05-28", updatedAt: "2026-05-28T10:26:36+08:00", title: "SKILL 页面字号与命名优化", changes: ["话题 SKILL 页面说明、输入框和 SKILL.md 内容区统一为普通文本字号。", "SKILL 类型来源与下拉框改为同一行。", "下拉框宽度按内容和场景收敛。", "SKILL 文件名按资料类型区分，并在材料列表中展示具体 SKILL 名称。"] },
+  { version: "v1.8.9", date: "2026-05-28", updatedAt: "2026-05-28T10:13:44+08:00", title: "资料配置与 SKILL 类型联动", changes: ["资料管理中资料来源和资料类型改为各自全行配置。", "资料来源和资料类型支持下拉选择后修改或新增，不再提供删除入口。", "配置名称增加必填和20字符长度限制。", "话题 SKILL 按资料类型选择，资料类型名称修改后同步到对应 SKILL 类型。"] },
+  { version: "v1.8.8", date: "2026-05-28", updatedAt: "2026-05-28T09:52:18+08:00", title: "高层视角话题 SKILL 模版", changes: ["话题 SKILL 页面改为上下布局。", "发布新版本时默认带出上一版本内容。", "扩写高层视角话题拆解 SKILL.md 标准模版。", "SKILL 数据增加适用材料类型，为会议纪要等后续 SKILL 预留扩展。"] },
+  { version: "v1.8.7", date: "2026-05-28", updatedAt: "2026-05-28T09:31:25+08:00", title: "系统配置体验优化", changes: ["统一系统配置页账号设置锚点定位。", "重新设计 11 套系统配色，提升常用界面搭配质感。", "更新 TalktoCEO 侧边栏标语。"] },
+  { version: "v1.8.6", date: "2026-05-28", updatedAt: "2026-05-28T09:07:13+08:00", title: "话题 SKILL 大厅", changes: ["SKILL 大厅新增话题 SKILL 子菜单。", "话题 SKILL 支持版本管理和新版本发布。", "材料列表可提示并刷新到最新 SKILL 版本。", "材料详情支持切换查看不同 SKILL 版本下的话题分析。"] },
+  { version: "v1.8.5", date: "2026-05-28", updatedAt: "2026-05-28T08:57:02+08:00", title: "一级菜单扩展", changes: ["左侧一级菜单新增 PRISM。", "左侧一级菜单新增 SKILL 大厅。"] },
+  { version: "v1.8.4", date: "2026-05-28", updatedAt: "2026-05-28T00:00:00+08:00", title: "材料编号", changes: ["材料列表增加材料编号展示。", "新分析材料自动生成 MA0001 形式的唯一材料编号。", "历史材料没有编号时按创建顺序兼容显示编号。"] },
+  { version: "v1.8.3", date: "2026-05-27", updatedAt: "2026-05-27T23:49:03+08:00", title: "上传保存与待分析队列重构", changes: ["上传页拆分为本次待保存清单和已保存待分析清单。", "未点击保存前执行分析保持不可用，不会调用大模型。", "保存后的材料写入本地待分析队列，刷新后仍在下方待分析清单展示。", "执行分析只处理下方已保存待分析清单中的勾选材料。"] },
+  { version: "v1.8.2", date: "2026-05-27", updatedAt: "2026-05-27T23:41:00+08:00", title: "材料列表与执行规则优化", changes: ["新增思想洞察下的材料列表视角，先看材料再看材料话题。", "上传材料保存后保持未执行状态，只有选中已保存材料才可执行分析。", "材料管理支持单行更新和单行删除。", "话题列表增加分页和每页数量设置。", "系统版本时间对管理员显示到秒，普通用户只显示日期。"] },
+  { version: "v1.8.1", date: "2026-05-27", updatedAt: "2026-05-27T23:35:00+08:00", title: "回收站与后台统计优化", changes: ["回收站材料名称支持再次点击收起关联话题。", "清理界面与模型结构中的旧延展学习内容。", "回收站话题预览去除重复标题。", "用户与平台管理增加文档和话题数量统计。"] },
+  { version: "v1.8.0", date: "2026-05-27", updatedAt: "2026-05-27T21:40:00+08:00", title: "资料生命周期与回收站", changes: ["思想洞察菜单更新，已分析材料可在材料上传页集中管理。", "支持资料软删除、管理员回收站恢复和彻底删除。", "话题编号升级为 TC0001 形式的唯一编号。", "管理员可按用户筛选话题列表。", "用户配置改为按账号隔离。"] },
+  { version: "v1.7.0", date: "2026-05-27", updatedAt: "2026-05-27T19:20:00+08:00", title: "材料上传与执行进度", changes: ["支持批量上传材料并选择执行分析。", "增加文件数量、大小限制和分析进度日志。", "分析完成后弹窗提示并跳转话题列表。"] },
+  { version: "v1.6.0", date: "2026-05-27", updatedAt: "2026-05-27T17:30:00+08:00", title: "个人大模型配置", changes: ["每位用户独立配置 Base URL、模型和 API Key。", "测试连接成功后才能保存大模型配置。"] },
+  { version: "v1.5.0", date: "2026-05-27", updatedAt: "2026-05-27T16:00:00+08:00", title: "话题驱动学习", changes: ["学习总览改为话题列表驱动。", "每份资料可拆出多个话题并查看原文。"] },
+];
+const ADMIN_EMAIL = "Simon.Lv@fanruan.com";
+const ADMIN_EMAIL_KEY = ADMIN_EMAIL.toLowerCase();
+const DEFAULT_ADMIN_PASSWORD = "Simon@2026#Admin";
+const SESSION_KEY = "ceo-speech-session";
+const FONT_SETTINGS_KEY = "talktoceo-font-settings";
+const FONT_SIZE_PRESETS = [
+  { id: "xsmall", name: "较小", note: "紧凑阅读", bodySize: "14px", buttonSize: "13px", titleSize: "22px" },
+  { id: "small", name: "小", note: "当前推荐", bodySize: "15px", buttonSize: "14px", titleSize: "24px" },
+  { id: "medium", name: "中", note: "浏览器常见正文", bodySize: "16px", buttonSize: "15px", titleSize: "26px" },
+  { id: "large", name: "大", note: "舒展阅读", bodySize: "17px", buttonSize: "16px", titleSize: "28px" },
+  { id: "xlarge", name: "较大", note: "大屏展示", bodySize: "18px", buttonSize: "17px", titleSize: "30px" },
+];
+const DEFAULT_FONT_SETTINGS = {
+  presetId: "small",
+  bodySize: "15px",
+  buttonSize: "14px",
+  titleSize: "24px",
+};
+const DEFAULT_DEEPSEEK_SETTINGS = {
+  provider: "deepseek",
+  apiKey: "",
+  baseUrl: "https://api.deepseek.com",
+  model: "deepseek-v4-flash",
+  thinking: "enabled",
+  reasoningEffort: "high",
+};
+const MODEL_PROVIDERS = [
+  { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash" },
+  { id: "fineres", name: "帆软内网模型", baseUrl: "https://it-ai.fineres.com/v1", model: "deepseek-v4-pro" },
+  { id: "openai-compatible", name: "OpenAI 兼容接口", baseUrl: "https://api.example.com/v1", model: "model-name" },
+  { id: "custom", name: "自定义", baseUrl: "https://api.example.com/v1", model: "model-name" },
+];
+const PRESET_CATEGORIES = [
+  { id: "preset-strategy", name: "战略" },
+  { id: "preset-organization", name: "组织管理" },
+  { id: "preset-culture", name: "文化建设" },
+  { id: "preset-ai", name: "AI" },
+  { id: "preset-digital", name: "数字化" },
+  { id: "preset-other", name: "其他" },
+];
+const DEFAULT_MATERIAL_SOURCES = [
+  { id: "source-ceo-marks", name: "CEO Marks", isPreset: true },
+];
+const DEFAULT_MATERIAL_TYPES = [
+  { id: "type-executive-view", name: "高层视角", isPreset: true },
+  { id: "type-meeting-notes", name: "会议纪要", isPreset: true },
+];
+const DEFAULT_TOPIC_SKILL_PROMPT = `# 高层视角话题拆解 SKILL.md
+
+## 1. 适用范围
+- 适用材料类型：高层视角。
+- 典型材料：CEO 讲话、高管观点、战略分享、经营复盘、组织管理讲话、数字化/AI 转型观点。
+- 当前 SKILL 不用于会议纪要、访谈逐字稿、项目日报等材料。若材料类型为会议纪要，应使用单独的会议拆解 SKILL。
+
+## 2. 核心任务
+你要把一份高层视角材料拆解为若干个“可学习的话题文章”。
+每个话题必须来自原文，每个话题只解决一个核心问题。
+不要把材料简单摘要成观点清单，而要把高层表达背后的管理问题、底层矛盾、关键动作和可迁移启示拆出来。
+
+## 3. 输入理解规则
+- 先通读全文，识别讲话对象、业务场景、关键矛盾、管理动作和反复出现的关键词。
+- 区分三类内容：核心判断、支撑案例、情绪表达。话题优先来自核心判断和关键管理动作。
+- 不要因为系统预设了战略、组织、数字化、AI、数据、领导力等分类，就强行套分类。分类必须服从原文。
+- 如果原文没有直接或间接依据，不允许生成对应话题。
+
+## 4. 话题抽取规则
+- 话题标题要写成问题，适合读者点击学习。
+- 标题中尽量保留原文里的具体名词、业务对象、组织场景或管理动作。
+- 每个话题至少提供 2 条原文证据，证据必须能直接支撑这个话题。
+- 一个话题只处理一个核心问题，不要把战略、组织、数据、AI 全部塞进一个话题。
+- 优先抽取 4-8 个高质量话题；材料很短时可以少于 4 个，但不要凑数。
+
+## 5. 话题文章标准结构
+每个话题文章必须按以下模块组织：
+
+### 难度等级
+用 1-5 星表示，判断依据是这个问题的抽象程度、跨组织难度和落地复杂度。
+
+### 问题类型
+可以多选，例如：战略 / 数据 / 领导力。必须贴合原文，不要泛化。
+
+### 问题实质
+用 2-4 段说明这个问题真正要解决的底层矛盾。
+至少包含一个管理学或组织行为视角；如果适合，可以加入心理学、认识论、毛泽东思想中的实践论/矛盾论视角。
+
+### 表面现象
+还原 CEO 在原文中讨论的具体场景、比喻、判断或管理动作。
+
+### 深层本质
+从三个维度展开：
+1. 心理学维度：人的认知、信任、偏误、动机或习惯如何影响这个问题。
+2. 管理学维度：组织结构、流程、权责、信息、激励如何塑造这个问题。
+3. 认识论维度：从实践论、调查研究、主要矛盾、群众路线等角度解释这个问题。
+
+### CEO 的解法与关键动作
+必须拆成：
+- 核心判断：CEO 对这个问题最关键的一句话判断。
+- 验证方法：如何证明这个判断有效，至少 3 条。
+- 关键行动：组织实际应该怎么做，至少 3 条。
+
+### 底层逻辑（理论锚点）
+- 关联理论/模型：列出 3-4 个理论锚点。
+- 逻辑拆解：说明这些理论如何解释 CEO 的解法。
+- 不要空喊理论，必须回到原文场景。
+
+### 案例对照（跨时空验证）
+包含反例、正例、历史类比。案例可以是通用管理案例，但不能替代原文依据。
+
+### 更多解法与选择
+至少给出 3 种替代解法，每种包含：
+- 解法名称
+- 具体步骤
+- 适用场景
+- 风险或边界
+
+### 可迁移的启示
+包含：
+- 对团队的启示
+- 对读者的行动建议
+- 下一次遇到类似问题时，应该先问自己的一个问题
+
+## 6. 输出质量要求
+- 语言必须中文，表达要像一篇可学习的管理文章，不要像机器摘要。
+- 不允许出现“这篇讲话围绕若干维度建立机制”这类空泛句。
+- 不允许脱离话题标题发散成通用管理文章。
+- 不允许编造原文没有的事实、组织名称、数字或事件。
+- 如果引用案例，必须说明它是案例对照，不要伪装成原文事实。
+- 任何判断都要能回到原文证据。
+
+## 7. 输出 JSON 约束
+- 必须严格输出系统要求的 JSON。
+- topics 中每个话题都要包含 evidence、sourceSummary、problemEssence、surfacePhenomenon、deepNature、ceoSolution、theoryAnchors、caseComparison、moreSolutions、transferableInsights。
+- quotes 只选择原文中最值得反复学习的句子。
+- suggestedTags 必须是便于后续检索的短标签。`;
+
+const DEFAULT_MEETING_SKILL_PROMPT = `# 会议纪要分析 SKILL.md
+
+## 1. 适用范围
+- 适用材料：多人会议文字记录、逐字稿、会议笔记、语音转文字结果。
+- 典型场景：项目例会、决策会、复盘会、跨部门协调会、评审会、推进会。
+- 不适用：个人访谈、高层战略讲话、纯文章解读、单人工作总结。
+
+## 2. 核心目标
+把会议纪要拆成一份可直接学习和复盘的结构化报告。它的主内容是会议纪要分析，不是强行生成学习文章。
+
+必须提取的内容：
+- 会议基础信息
+- 已做出的决策
+- 行动项与责任人
+- 各议题的讨论逻辑与分歧点
+- 会议中的情感/协作态势
+- 明确或隐含的风险与依赖
+- 待定问题与后续跟进
+
+如果原文中出现了足够清晰、可以继续深挖的问题，再额外提炼 topics；如果没有，不要强行提炼，topics 直接返回空数组。
+
+## 3. 输入理解规则
+- 先识别发言人、时间线、议题切换节点，再做结构化拆分。
+- 区分事实陈述、观点判断、情绪表达、临时共识、保留意见。
+- 缺失信息如负责人、截止日期、会议时间、主持人、记录人等，统一写“未提及”或“需补充”。
+- 不做超出原文的推断；只有在必要且明确标注 [推断] 时才允许推断。
+- 同一句话里如果既有结论又有态度，要分别进入对应模块，不要混写。
+
+## 4. 输出结构
+### 4.1 meetingAnalysis（必须输出）
+1. meetingInfo
+   - 会议主题
+   - 会议目标
+   - 会议时间
+   - 会议时长
+   - 参会人
+   - 缺席人
+   - 主持人
+   - 记录人
+2. decisions
+   - 每条决策都要包含：序号、议题、决定内容、依据/理由
+3. actionItems
+   - 每条行动项都要包含：序号、行动内容、负责人、截止日期、来源
+4. discussionSummary
+   - 每个议题都要包含：议题名称、背景、关键观点、分歧点、结论/走向
+5. collaboration
+   - 整体氛围
+   - 态度分布
+   - 关键冲突点
+   - 虚假同意或带保留同意
+6. risksAndDependencies
+   - 明确风险
+   - 隐含风险
+   - 外部/跨部门依赖
+   - 信息缺失
+7. pendingQuestions
+   - 问题
+   - 当前状态
+   - 跟进建议
+8. topicExtractionNote
+   - 说明是否有可提炼话题
+   - 如果没有，说明为什么没有
+
+### 4.2 topics（可选）
+- 只有在会议中出现清晰问题、关键矛盾、可学习的决策逻辑、组织协同问题时才输出。
+- 不要把普通待办事项、流程提醒、时间安排强行包装成话题。
+- 话题必须有原文证据，且标题要能被证据直接支撑。
+- 没有适合展开的话题时，topics 返回 []。
+- 若输出 topics，每个 topic 仍然沿用高层视角话题文章结构，但标题和证据必须严格来自会议原文。
+
+## 5. 输出原则
+- 事实优先，所有内容基于原文。
+- 不编造，没有的信息写“未提及”。
+- 保留模糊，原文模糊就原样引用。
+- 先事实后分析，先原文后判断。
+- 语言必须中文，表达要像一份认真整理过的会议学习材料，不要像机器摘要。`;
+const DEFAULT_TOPIC_SKILL = {
+  id: "topic-skill-default-v1",
+  name: skillNameForMaterialTypeName("高层视角"),
+  version: "v1.0",
+  versionNumber: 1,
+  summary: `面向高层视角材料的标准${skillFileNameForMaterialTypeName("高层视角")}，用原文证据抽取可学习的问题文章。`,
+  prompt: DEFAULT_TOPIC_SKILL_PROMPT,
+  targetMaterialTypeId: "type-executive-view",
+  targetMaterialTypeName: "高层视角",
+  skillFileName: skillFileNameForMaterialTypeName("高层视角"),
+  changeLog: ["初始版本：建立高层视角材料的话题抽取、证据约束和文章组织标准。"],
+  createdAt: "2026-05-28T00:00:00+08:00",
+  isPreset: true,
+};
+const THEMES = [
+  { id: "fineres-minglan", name: "数智溟蓝", scope: "默认（帆软本部）", description: "深邃的科技蓝，象征数据海洋与系统智慧，沉稳且现代。", ink: "#172033", primary: "#1d4ed8", accent: "#0891b2", soft: "#f0f7ff", bg: "#eef4fb" },
+  { id: "jingjin-dansha", name: "禁城丹砂", scope: "京津战区", description: "故宫红墙的浓郁朱砂色，京华贵气与历史厚重感。", ink: "#2f1d1b", primary: "#b42318", accent: "#d97706", soft: "#fff5f2", bg: "#f8eee9" },
+  { id: "dongbei-xuantie", name: "雪莽玄铁", scope: "东北战区", description: "黑土地与冰原交织，玄青色中透出铁质刚毅，凛冽而坚实。", ink: "#111827", primary: "#334155", accent: "#0284c7", soft: "#f3f7fb", bg: "#e8eef3" },
+  { id: "xibei-jinpo", name: "沙鸣金珀", scope: "西北战区", description: "鸣沙山与胡杨林的金色光泽，如琥珀般温润苍茫。", ink: "#2b2118", primary: "#b7791f", accent: "#2563eb", soft: "#fff8e7", bg: "#f7efe0" },
+  { id: "huabei-cangcui", name: "燕山苍翠", scope: "华北战区", description: "太行燕山的常青之色，苍绿中蕴藏雄关与沃野的生机。", ink: "#18251f", primary: "#2f6f4e", accent: "#ca8a04", soft: "#eef8f1", bg: "#e8f1ea" },
+  { id: "shanghai-huanyin", name: "申江幻银", scope: "上海战区", description: "浦江霓虹与摩天楼幕墙的流动银色，未来感与摩登气质。", ink: "#1f2937", primary: "#475569", accent: "#7c3aed", soft: "#f6f8fb", bg: "#edf1f5" },
+  { id: "suwan-shuimo", name: "徽州水墨", scope: "苏皖战区", description: "白墙黛瓦的烟雨灰，如宣纸上的淡墨，雅致而含蓄。", ink: "#1f2933", primary: "#4b5563", accent: "#0f766e", soft: "#f7f7f4", bg: "#ecefeb" },
+  { id: "zhemin-danyan", name: "武夷丹岩", scope: "浙闽战区", description: "丹霞地貌的赤红岩色，融合茶山与海岸的热情之红。", ink: "#30201d", primary: "#c2410c", accent: "#0f766e", soft: "#fff4ec", bg: "#f6e8df" },
+  { id: "huanan-jianghong", name: "木棉绛红", scope: "华南战区", description: "岭南英雄树花朵的绛红色，热烈奔放，饱含亚热带生命力。", ink: "#351820", primary: "#be123c", accent: "#ea580c", soft: "#fff1f2", bg: "#f8e8ec" },
+  { id: "xinan-ziying", name: "蜀锦紫英", scope: "西南战区", description: "巴蜀织锦与藏地高原的紫色调，神秘瑰丽，似霞光映雪。", ink: "#251a35", primary: "#7e22ce", accent: "#db2777", soft: "#f7f0ff", bg: "#eee7f6" },
+  { id: "huazhong-tonglv", name: "云梦铜绿", scope: "华中战区", description: "荆楚青铜器的古锈绿意，云梦泽的幽邃，古朴而沉静。", ink: "#17251f", primary: "#047857", accent: "#b45309", soft: "#effaf5", bg: "#e6f1ec" },
+];
+
+const categoryDefs = [
+  {
+    id: "strategy",
+    name: "战略",
+    color: "#3267a8",
+    keywords: ["战略", "方向", "选择", "定位", "机会", "行业", "客户", "市场", "增长", "竞争", "价值", "取舍", "长期", "未来"],
+    question: "企业如何在不确定环境中做出清晰的战略选择？",
+    essence: "核心矛盾是外部机会很多、内部资源有限，必须把战略从愿望变成取舍。",
+    logic: "先从真实市场和客户实践中取得认识，再用关键矛盾牵引资源配置，最后通过反馈修正判断。",
+  },
+  {
+    id: "digital",
+    name: "数字化",
+    color: "#087c76",
+    keywords: ["数字化", "系统", "平台", "在线", "工具", "技术", "业务", "协同", "自动化", "中台", "软件", "数据化"],
+    question: "数字化到底应该解决业务中的哪个核心问题？",
+    essence: "核心矛盾是业务动作分散在个人经验里，组织无法沉淀、复用和放大。",
+    logic: "数字化不是先买工具，而是把关键业务过程显性化，让实践经验进入系统并形成可迭代的机制。",
+  },
+  {
+    id: "ai",
+    name: "AI",
+    color: "#7652a4",
+    keywords: ["AI", "人工智能", "大模型", "算法", "智能", "模型", "生成式", "机器", "自动", "智能化", "机器人"],
+    question: "AI 应该优先嵌入企业的哪些经营管理场景？",
+    essence: "核心矛盾是组织知识增长速度慢，而 AI 可以把分析、生成、复盘和训练的成本快速降下来。",
+    logic: "AI 的价值不在替代全部判断，而在把高频、可描述、可反馈的认知劳动变成组织能力。",
+  },
+  {
+    id: "organization",
+    name: "组织管理",
+    color: "#407a4c",
+    keywords: ["组织", "团队", "人才", "干部", "一线", "协同", "共创", "责任", "授权", "管理", "机制", "能力", "部门"],
+    question: "组织怎样把 CEO 的判断转化为一线可执行的共同动作？",
+    essence: "核心矛盾是战略判断在少数人脑中，而执行发生在一线和跨部门协同里。",
+    logic: "群众路线在管理中的体现，是从一线实践中来，到一线行动中去；共创可以降低认知偏差，也提高执行承诺。",
+  },
+  {
+    id: "process",
+    name: "流程",
+    color: "#b7791f",
+    keywords: ["流程", "SOP", "标准", "闭环", "执行", "落地", "节点", "复盘", "计划", "节奏", "会议", "项目"],
+    question: "如何把好的管理想法变成稳定可复制的流程？",
+    essence: "核心矛盾是一次性成功不能代表组织能力，必须把经验变成可检查、可复盘、可改进的动作链条。",
+    logic: "实践论强调认识要回到实践中检验；流程的价值就是让检验和反馈有固定入口。",
+  },
+  {
+    id: "data",
+    name: "数据",
+    color: "#c6533f",
+    keywords: ["数据", "指标", "分析", "事实", "报表", "看板", "衡量", "反馈", "增长率", "成本", "利润", "效率", "转化"],
+    question: "管理者如何用数据逼近事实，而不是被数据表象带偏？",
+    essence: "核心矛盾是经验判断有速度但容易偏，数据判断有依据但需要解释和场景。",
+    logic: "数据是实践的压缩表达，真正的管理判断要把数据、场景和人的行为放在一起看。",
+  },
+  {
+    id: "incentive",
+    name: "激励",
+    color: "#8a5a22",
+    keywords: ["激励", "奖励", "奖金", "分配", "考核", "绩效", "利益", "薪酬", "目标", "约束", "评价"],
+    question: "怎样设计激励，让组织成员主动奔向关键目标？",
+    essence: "核心矛盾是组织目标与个人收益之间天然存在距离，激励要把两者重新连接起来。",
+    logic: "激励不是简单奖惩，而是通过利益结构推动矛盾转化，让被动执行转成主动创造。",
+  },
+  {
+    id: "culture",
+    name: "文化",
+    color: "#5e6b2f",
+    keywords: ["文化", "价值观", "使命", "愿景", "信任", "奋斗", "长期主义", "透明", "学习", "反思", "心态"],
+    question: "文化如何从口号变成组织面对困难时的真实选择？",
+    essence: "核心矛盾是文化容易停留在表达层，真正的文化必须体现在取舍、分配和关键时刻的行为中。",
+    logic: "文化是长期实践沉淀出的共同标准，只有在反复选择中被验证，才会成为组织的稳定力量。",
+  },
+  {
+    id: "leadership",
+    name: "领导力",
+    color: "#4d6178",
+    keywords: ["CEO", "领导", "决策", "认知", "判断", "带领", "沟通", "信心", "危机", "变革", "问题", "方法"],
+    question: "领导者如何把复杂问题讲清楚，并带动组织行动？",
+    essence: "核心矛盾是复杂环境需要统一认知，而组织成员看到的问题往往局部、分散、短期。",
+    logic: "领导力的底层是定义问题、抓住主要矛盾、组织实践并持续校准，而不只是表达愿景。",
+  },
+];
+
+const deepeningModes = [
+  {
+    title: "系统重构",
+    goal: "把多篇讲话融合成 CEO 的经营管理体系。",
+    questions: ["哪些命题反复出现？", "哪些做法只是阶段性策略？", "能否形成一张战略到反馈的总图？"],
+  },
+  {
+    title: "深度复盘",
+    goal: "用时间线看 CEO 思想和实践如何演变。",
+    questions: ["每个阶段解决什么矛盾？", "变化来自外部压力还是主动进化？", "当前组织处在哪个阶段？"],
+  },
+  {
+    title: "角色扮演",
+    goal: "代入 CEO 视角解决一个新问题。",
+    questions: ["他会先看什么事实？", "他会先建机制还是先调整人？", "你的方案与他的差距在哪里？"],
+  },
+  {
+    title: "智慧传承",
+    goal: "把讲话转化为可教学、可训练的课程。",
+    questions: ["核心原理是什么？", "学员最容易卡在哪里？", "怎样设计演练让方法被用出来？"],
+  },
+  {
+    title: "批判反思",
+    goal: "识别 CEO 方法的边界条件和改进空间。",
+    questions: ["什么情况下会失效？", "失效是规模、行业还是文化原因？", "改进版方案如何设计？"],
+  },
+  {
+    title: "未来推演",
+    goal: "在 AI 时代重新审视这些经营方法。",
+    questions: ["哪些环节会被 AI 增强？", "哪些底层逻辑不会变？", "今天应该先准备什么能力？"],
+  },
+];
+
+const sampleText = `今天我想讲三个关键词：战略、数字化和组织能力。企业越是在不确定的环境里，越不能把战略理解成口号。战略首先是选择，是对客户、行业和资源的重新排序。我们过去几年犯过一个错误，就是每个机会都想抓，结果资源被摊薄，一线也不知道什么是最重要的目标。
+
+数字化不是 IT 部门的项目，而是业务管理方式的变化。我们要求每个关键流程都在线，每个客户触点都能沉淀数据，每个项目结束后都要复盘。数据不是为了做漂亮报表，而是为了让管理者看见真实问题。只有看见真实问题，组织才有机会改进。
+
+AI 会改变知识工作，但不会替代管理者对业务本质的判断。我们要把 AI 用在行业研究、客户洞察、销售训练、流程复盘和知识沉淀上，让每个一线员工都能站在组织经验的肩膀上工作。AI 不是一个单点工具，而是未来组织学习速度的放大器。
+
+组织管理最重要的是让一线参与共创。总部不能坐在办公室里设计所有规则，规则必须从现场来，再回到现场验证。我们会奖励那些主动发现问题、提出方案、把经验沉淀为标准动作的人。考核只告诉大家不能做什么，奖励才能告诉大家什么是真正重要的。
+
+最后，领导者要敢于做减法。越复杂的时候，越要回到客户价值、关键流程、核心人才和真实数据。只要我们持续复盘，持续学习，持续把经验变成机制，就能在变化中建立长期能力。`;
+
+const els = {
+  fileInput: document.querySelector("#fileInput"),
+  fileInputWrapper: document.querySelector("#fileInput")?.parentElement,
+  authScreen: document.querySelector("#authScreen"),
+  loginForm: document.querySelector("#loginForm"),
+  registerForm: document.querySelector("#registerForm"),
+  forgotForm: document.querySelector("#forgotForm"),
+  loginEmail: document.querySelector("#loginEmail"),
+  loginPassword: document.querySelector("#loginPassword"),
+  rememberDuration: document.querySelectorAll("input[name='rememberDuration']"),
+  registerEmail: document.querySelector("#registerEmail"),
+  forgotEmail: document.querySelector("#forgotEmail"),
+  authMessage: document.querySelector("#authMessage"),
+  authTabs: document.querySelectorAll(".auth-tab"),
+  dropZone: document.querySelector("#dropZone"),
+  docNameInput: document.querySelector("#docNameInput"),
+  docCategorySelect: document.querySelector("#docCategorySelect"),
+  materialSourceSelect: document.querySelector("#materialSourceSelect"),
+  materialTypeSelect: document.querySelector("#materialTypeSelect"),
+  tagInput: document.querySelector("#tagInput"),
+  sourceText: document.querySelector("#sourceText"),
+  analyzeBtn: document.querySelector("#analyzeBtn"),
+  saveUploadBtn: document.querySelector("#saveUploadBtn"),
+  sampleBtn: document.querySelector("#sampleBtn"),
+  clearBtn: document.querySelector("#clearBtn"),
+  parseHint: document.querySelector("#parseHint"),
+  analysisProgressBar: document.querySelector("#analysisProgressBar"),
+  analysisProgressPercent: document.querySelector("#analysisProgressPercent"),
+  analysisLog: document.querySelector("#analysisLog"),
+  librarySearch: document.querySelector("#librarySearch"),
+  libraryTagSearch: document.querySelector("#libraryTagSearch"),
+  libraryCategoryFilter: document.querySelector("#libraryCategoryFilter"),
+  libraryOwnerFilter: document.querySelector("#libraryOwnerFilter"),
+  libraryTags: document.querySelector("#libraryTags"),
+  documentList: document.querySelector("#documentList"),
+  resetFilterBtn: document.querySelector("#resetFilterBtn"),
+  topicTableBody: document.querySelector("#topicTableBody"),
+  materialOverviewPage: document.querySelector("#materialOverviewPage"),
+  topicHomeList: document.querySelector("#topicHomeList"),
+  topicHomeArticle: document.querySelector("#topicHomeArticle"),
+  uploadMaterialList: document.querySelector("#uploadMaterialList"),
+  pendingUploadMaterialList: document.querySelector("#pendingUploadMaterialList"),
+  topicSearchInput: document.querySelector("#topicSearchInput"),
+  topicSourceFilter: document.querySelector("#topicSourceFilter"),
+  topicTypeFilter: document.querySelector("#topicTypeFilter"),
+  topicFavoriteFilter: document.querySelector("#topicFavoriteFilter"),
+  topicOwnerFilter: document.querySelector("#topicOwnerFilter"),
+  topicOwnerOptions: document.querySelector("#topicOwnerOptions"),
+  newMaterialBtn: document.querySelector("#newMaterialBtn"),
+  topNewMaterialBtn: document.querySelector("#topNewMaterialBtn"),
+  analyzedMaterialList: document.querySelector("#analyzedMaterialList"),
+  deleteAnalyzedMaterialsBtn: document.querySelector("#deleteAnalyzedMaterialsBtn"),
+  userBadge: document.querySelector("#userBadge"),
+  accountBtn: document.querySelector("#accountBtn"),
+  logoutBtn: document.querySelector("#logoutBtn"),
+  adminPage: document.querySelector("#adminPage"),
+  categoryAdminPage: document.querySelector("#categoryAdminPage"),
+  configPage: document.querySelector("#configPage"),
+  materialManagePage: document.querySelector("#materialManagePage"),
+  topicSkillPage: document.querySelector("#topicSkillPage"),
+  recyclePage: document.querySelector("#recyclePage"),
+  versionPage: document.querySelector("#versionPage"),
+  configAnalyzeMode: document.querySelector("#configAnalyzeMode"),
+  analysisSourceBadge: document.querySelector("#analysisSourceBadge"),
+  docTitle: document.querySelector("#docTitle"),
+  originalTextBody: document.querySelector("#originalTextBody"),
+  oneLine: document.querySelector("#oneLine"),
+  logicLine: document.querySelector("#logicLine"),
+  metricTopics: document.querySelector("#metricTopics"),
+  metricCategories: document.querySelector("#metricCategories"),
+  metricQuotes: document.querySelector("#metricQuotes"),
+  metricWords: document.querySelector("#metricWords"),
+  categoryBoard: document.querySelector("#categoryBoard"),
+  topicList: document.querySelector("#topicList"),
+  topicArticle: document.querySelector("#topicArticle"),
+  drillPage: document.querySelector("#drillPage"),
+  quoteList: document.querySelector("#quoteList"),
+  deepeningBoard: document.querySelector("#deepeningBoard"),
+  exportBtn: document.querySelector("#exportBtn"),
+  copyBtn: document.querySelector("#copyBtn"),
+  moduleTabs: document.querySelectorAll(".module-tab"),
+  studyTabs: document.querySelectorAll(".study-tab"),
+};
+
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DOC_STORE)) {
+        const store = db.createObjectStore(DOC_STORE, { keyPath: "id" });
+        store.createIndex("updatedAt", "updatedAt");
+      }
+      if (!db.objectStoreNames.contains(USER_STORE)) {
+        const store = db.createObjectStore(USER_STORE, { keyPath: "emailKey" });
+        store.createIndex("role", "role");
+        store.createIndex("status", "status");
+        store.createIndex("createdAt", "createdAt");
+      }
+      if (!db.objectStoreNames.contains(EVENT_STORE)) {
+        const store = db.createObjectStore(EVENT_STORE, { keyPath: "id" });
+        store.createIndex("emailKey", "emailKey");
+        store.createIndex("type", "type");
+        store.createIndex("createdAt", "createdAt");
+      }
+      if (!db.objectStoreNames.contains(CATEGORY_STORE)) {
+        const store = db.createObjectStore(CATEGORY_STORE, { keyPath: "id" });
+        store.createIndex("ownerEmailKey", "ownerEmailKey");
+        store.createIndex("createdAt", "createdAt");
+      }
+      if (!db.objectStoreNames.contains(PENDING_UPLOAD_STORE)) {
+        const store = db.createObjectStore(PENDING_UPLOAD_STORE, { keyPath: "ownerEmailKey" });
+        store.createIndex("updatedAt", "updatedAt");
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function withStore(storeName, mode, callback) {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, mode);
+    const store = transaction.objectStore(storeName);
+    const result = callback(store);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve(result);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+}
+
+async function persistPendingUploads() {
+  if (!state.currentUser) {
+    return;
+  }
+  if (!state.uploadItems.length) {
+    await withStore(PENDING_UPLOAD_STORE, "readwrite", (store) => store.delete(state.currentUser.emailKey));
+    return;
+  }
+  const now = new Date().toISOString();
+  const record = {
+    ownerEmailKey: state.currentUser.emailKey,
+    ownerEmail: state.currentUser.email,
+    items: state.uploadItems,
+    uploadBatchSaved: state.uploadBatchSaved,
+    uploadAnalysisCompleted: state.uploadAnalysisCompleted,
+    rawText: state.rawText,
+    fileName: state.fileName,
+    updatedAt: now,
+  };
+  await withStore(PENDING_UPLOAD_STORE, "readwrite", (store) => store.put(record));
+}
+
+async function clearPendingUploads() {
+  if (!state.currentUser) {
+    return;
+  }
+  await withStore(PENDING_UPLOAD_STORE, "readwrite", (store) => store.delete(state.currentUser.emailKey));
+}
+
+async function loadPendingUploads() {
+  if (!state.currentUser) {
+    return;
+  }
+  const record = await withStore(PENDING_UPLOAD_STORE, "readonly", (store) => {
+    const request = store.get(state.currentUser.emailKey);
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  });
+  if (!record?.items?.length) {
+    renderUploadMaterialList();
+    renderPendingUploadMaterialList();
+    updateUploadButtons();
+    return;
+  }
+  state.uploadItems = removeCompletedPendingUploads(record.items.map((item) => ({ selected: true, overwrite: false, ...item })));
+  state.uploadBatchSaved = true;
+  state.uploadAnalysisCompleted = Boolean(record.uploadAnalysisCompleted);
+  state.rawText = state.uploadItems.map((item) => `【${item.title}】\n${item.rawText}`).join("\n\n");
+  state.fileName = record.fileName || state.uploadItems.map((item) => item.fileName).join("、");
+  if (els.sourceText) {
+    els.sourceText.value = state.rawText;
+  }
+  if (!state.uploadItems.length) {
+    state.uploadBatchSaved = false;
+    state.uploadAnalysisCompleted = false;
+    state.rawText = "";
+    state.fileName = "";
+    await clearPendingUploads();
+    setAnalysisIdle("暂无已保存待分析材料。");
+    renderUploadMaterialList();
+    renderPendingUploadMaterialList();
+    return;
+  } else if (state.uploadItems.length !== record.items.length) {
+    state.uploadAnalysisCompleted = false;
+    await persistPendingUploads();
+  }
+  renderUploadMaterialList();
+  renderPendingUploadMaterialList();
+  setAnalysisIdle("已恢复未执行分析的材料，请勾选后执行分析。");
+}
+
+async function loadDocuments() {
+  if (!state.currentUser) {
+    state.allDocuments = [];
+    state.documents = [];
+    renderDocumentLibrary();
+    return;
+  }
+  const docs = await withStore(DOC_STORE, "readonly", (store) => {
+    const request = store.getAll();
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  });
+  state.allDocuments = docs;
+  const materialCodeFixes = ensureUniqueMaterialCodes(state.allDocuments);
+  if (materialCodeFixes.length) {
+    await withStore(DOC_STORE, "readwrite", (store) => {
+      materialCodeFixes.forEach((doc) => store.put(doc));
+    });
+    state.allDocuments = state.allDocuments.map((doc) => materialCodeFixes.find((item) => item.id === doc.id) || doc);
+  }
+  await normalizeCurrentUserMaterialReferences();
+  const activeDocs = state.allDocuments.filter((doc) => !doc.deletedAt);
+  const visibleDocs = isAdmin()
+    ? activeDocs.filter((doc) => state.activeOwner === "all" || (doc.ownerEmailKey || "") === state.activeOwner)
+    : activeDocs.filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === state.currentUser.emailKey);
+  state.documents = visibleDocs.sort((a, b) => new Date(b.lastStudiedAt || b.updatedAt) - new Date(a.lastStudiedAt || a.updatedAt));
+  renderDocumentLibrary();
+  renderAnalyzedMaterialList();
+  renderTopicFilters();
+  renderMaterialOverviewPage();
+  renderTopicHome();
+  renderCategoryAdminPage();
+  renderRecyclePage();
+  if (isAdmin()) {
+    renderAdminPage();
+  }
+}
+
+async function loadDocCategories() {
+  if (!state.currentUser) {
+    state.docCategories = [];
+    renderCategoryControls();
+    renderCategoryAdminPage();
+    return;
+  }
+  const categories = await withStore(CATEGORY_STORE, "readonly", (store) => storeRequest(store, (s) => s.getAll()));
+  const visible = isAdmin()
+    ? categories
+    : categories.filter((item) => item.ownerEmailKey === state.currentUser.emailKey);
+  state.docCategories = [...PRESET_CATEGORIES.map((item) => ({ ...item, isPreset: true })), ...visible.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))];
+  renderCategoryControls();
+  renderCategoryAdminPage();
+}
+
+function categoryById(id) {
+  return state.docCategories.find((item) => item.id === id);
+}
+
+function setCategoryAdminNotice(message, tone = "info") {
+  state.categoryAdminNotice = { message, tone };
+}
+
+function docBelongsToCategory(doc, categoryId) {
+  if (categoryId === "preset-other") {
+    return !doc.categoryId || doc.categoryId === categoryId;
+  }
+  return doc.categoryId === categoryId;
+}
+
+function canManageDoc(doc) {
+  return isAdmin() || (doc.ownerEmailKey || "").toLowerCase() === state.currentUser.emailKey;
+}
+
+function manageableDocsForCategory(categoryId, scope = "all") {
+  return state.allDocuments.filter((doc) => {
+    if (!docBelongsToCategory(doc, categoryId) || !canManageDoc(doc)) {
+      return false;
+    }
+    if (isAdmin() && scope !== "all") {
+      return (doc.ownerEmailKey || "").toLowerCase() === scope;
+    }
+    return true;
+  });
+}
+
+async function createDocCategory(name) {
+  const normalized = String(name || "").trim().slice(0, 40);
+  if (!normalized) {
+    return;
+  }
+  const exists = state.docCategories.some((item) => item.name === normalized && item.ownerEmailKey === state.currentUser.emailKey);
+  if (exists) {
+    els.parseHint.textContent = "这个分类已经存在。";
+    return;
+  }
+  const now = new Date().toISOString();
+  const category = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: normalized,
+    ownerEmail: state.currentUser.email,
+    ownerEmailKey: state.currentUser.emailKey,
+    createdAt: now,
+  };
+  await withStore(CATEGORY_STORE, "readwrite", (store) => store.put(category));
+  await logEvent("create_category", { categoryId: category.id, name: category.name });
+  await loadDocCategories();
+}
+
+async function deleteDocCategory(id) {
+  const category = categoryById(id);
+  if (!category || category.isPreset || (!isAdmin() && category.ownerEmailKey !== state.currentUser.emailKey)) {
+    return;
+  }
+  const affectedDocs = state.allDocuments.filter((doc) => docBelongsToCategory(doc, id));
+  if (affectedDocs.length) {
+    setCategoryAdminNotice(`该分类下还有 ${affectedDocs.length} 篇文档，不能删除。请先迁移或清空后再删除。`, "error");
+    renderCategoryAdminPage();
+    return;
+  }
+  await withStore(CATEGORY_STORE, "readwrite", (store) => store.delete(id));
+  await logEvent("delete_category", { categoryId: id, name: category.name });
+  await loadDocCategories();
+  await loadDocuments();
+}
+
+async function transferCategoryDocs(sourceCategoryId, targetCategoryId, scope = "all") {
+  const source = categoryById(sourceCategoryId);
+  const target = categoryById(targetCategoryId);
+  if (!source || !target || source.id === target.id) {
+    setCategoryAdminNotice("请选择不同的来源分类和目标分类。", "error");
+    renderCategoryAdminPage();
+    return;
+  }
+  const docs = manageableDocsForCategory(source.id, scope);
+  if (!docs.length) {
+    setCategoryAdminNotice("当前没有可转移的文档。", "info");
+    renderCategoryAdminPage();
+    return;
+  }
+  const now = new Date().toISOString();
+  for (const doc of docs) {
+    await withStore(DOC_STORE, "readwrite", (store) =>
+      store.put({
+        ...doc,
+        categoryId: target.id,
+        categoryName: target.name,
+        updatedAt: now,
+      }));
+  }
+  await logEvent("transfer_category_docs", {
+    sourceCategoryId: source.id,
+    targetCategoryId: target.id,
+    count: docs.length,
+    scope,
+  });
+  setCategoryAdminNotice(`已将 ${docs.length} 篇文档从“${source.name}”转移到“${target.name}”。`, "success");
+  await loadDocuments();
+  await loadDocCategories();
+}
+
+function renderCategoryControls() {
+  const currentDocValue = els.docCategorySelect.value;
+  const filterValue = state.activeDocCategory;
+  const options = []
+    .concat(state.docCategories.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  els.docCategorySelect.innerHTML = options;
+  els.docCategorySelect.value = currentDocValue && categoryById(currentDocValue) ? currentDocValue : "preset-other";
+
+  const filterOptions = [`<option value="">全部分类</option>`]
+    .concat(state.docCategories.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  els.libraryCategoryFilter.innerHTML = filterOptions;
+  els.libraryCategoryFilter.value = filterValue;
+}
+
+function renderCategoryAdminPage() {
+  if (!els.categoryAdminPage) {
+    return;
+  }
+  state.categoryTransferSource = state.categoryTransferSource || state.docCategories[0]?.id || "";
+  state.categoryTransferTarget = state.categoryTransferTarget || state.docCategories[1]?.id || state.docCategories[0]?.id || "";
+  const rows = state.docCategories
+    .map((category) => {
+      const count = state.allDocuments.filter((doc) => docBelongsToCategory(doc, category.id)).length;
+      const owner = isAdmin() ? `<td>${escapeHtml(category.isPreset ? "系统预设" : category.ownerEmail || "")}</td>` : "";
+      const action = category.isPreset
+        ? `<span class="muted-text">固定分类</span>`
+        : `<button class="mini-button danger" type="button" data-category-delete="${escapeHtml(category.id)}" ${count ? "disabled" : ""}>删除</button>`;
+      return `
+        <tr>
+          <td>${escapeHtml(category.name)}${category.isPreset ? `<span class="fixed-mark">预设</span>` : ""}</td>
+          ${owner}
+          <td>${count}</td>
+          <td>${category.isPreset ? "系统预设" : formatDate(category.createdAt)}</td>
+          <td>${action}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  const ownerHead = isAdmin() ? "<th>创建人</th>" : "";
+  const ownerScopeOptions = isAdmin()
+    ? [
+        `<option value="all">所有用户</option>`,
+        `<option value="${escapeHtml(state.currentUser.emailKey)}">只看自己</option>`,
+        ...state.users
+          .filter((user) => user.emailKey !== state.currentUser.emailKey)
+          .map((user) => `<option value="${escapeHtml(user.emailKey)}">${escapeHtml(user.email)}</option>`),
+      ].join("")
+    : "";
+  const sourceOptions = state.docCategories.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+  const targetOptions = state.docCategories.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+  const notice = state.categoryAdminNotice?.message
+    ? `<p class="category-notice" data-tone="${escapeHtml(state.categoryAdminNotice.tone || "info")}">${escapeHtml(state.categoryAdminNotice.message)}</p>`
+    : "";
+  els.categoryAdminPage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Document Taxonomy</p>
+        <h2>文档分类管理</h2>
+      </div>
+      <p>有文档占用的分类不能删除；先把文档转移出去，再删除分类。</p>
+    </div>
+    <form class="category-create-form" id="categoryCreateForm">
+      <input class="text-input" id="newCategoryName" type="text" placeholder="新分类，例如：战略会、AI专题、组织管理" />
+      <button class="primary" type="submit">创建分类</button>
+    </form>
+    <section class="category-transfer-panel">
+      <div class="panel-head">
+        <h3>转移分类文档</h3>
+        <p>把某个分类下的文档批量迁移到另一个分类，迁移后原分类才可删除。</p>
+      </div>
+      <div class="category-transfer-form">
+        <select class="text-input" id="transferSourceCategory">${sourceOptions}</select>
+        <select class="text-input" id="transferTargetCategory">${targetOptions}</select>
+        ${isAdmin() ? `<select class="text-input" id="transferScope">${ownerScopeOptions}</select>` : ""}
+        <button class="primary" type="button" id="transferCategoryDocsBtn">执行转移</button>
+      </div>
+    </section>
+    ${notice}
+    <section class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>分类名称</th>
+            ${ownerHead}
+            <th>文档数</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="${isAdmin() ? 5 : 4}">还没有分类。</td></tr>`}</tbody>
+      </table>
+    </section>
+  `;
+  els.categoryAdminPage.querySelector("#categoryCreateForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ok = await confirmAction({
+      title: "创建分类",
+      message: "确认创建这个文档分类吗？创建后会出现在分类筛选和文档分类中。",
+      confirmText: "确认创建",
+    });
+    if (!ok) {
+      return;
+    }
+    const input = els.categoryAdminPage.querySelector("#newCategoryName");
+    await createDocCategory(input.value);
+    input.value = "";
+  });
+  const transferSource = els.categoryAdminPage.querySelector("#transferSourceCategory");
+  const transferTarget = els.categoryAdminPage.querySelector("#transferTargetCategory");
+  const transferScope = els.categoryAdminPage.querySelector("#transferScope");
+  if (transferSource) {
+    transferSource.value = state.categoryTransferSource || transferSource.value || "";
+    transferSource.addEventListener("change", () => {
+      state.categoryTransferSource = transferSource.value;
+    });
+  }
+  if (transferTarget) {
+    transferTarget.value = state.categoryTransferTarget || transferTarget.value || "";
+    transferTarget.addEventListener("change", () => {
+      state.categoryTransferTarget = transferTarget.value;
+    });
+  }
+  if (transferScope) {
+    transferScope.value = state.categoryTransferScope || "all";
+    transferScope.addEventListener("change", () => {
+      state.categoryTransferScope = transferScope.value;
+      renderCategoryAdminPage();
+    });
+  }
+  const transferButton = els.categoryAdminPage.querySelector("#transferCategoryDocsBtn");
+  if (transferButton) {
+    transferButton.addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: "执行分类转移",
+        message: "确认把所选分类下的文档转移到目标分类吗？转移后会影响这些文档的分类归属。",
+        confirmText: "确认转移",
+      });
+      if (!ok) {
+        return;
+      }
+      const sourceId = transferSource?.value || state.categoryTransferSource;
+      const targetId = transferTarget?.value || state.categoryTransferTarget;
+      await transferCategoryDocs(sourceId, targetId, state.categoryTransferScope || "all");
+    });
+  }
+  els.categoryAdminPage.querySelectorAll("[data-category-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: "删除分类",
+        message: "确认删除这个分类吗？如果里面还有文档，系统会阻止删除。",
+        confirmText: "确认删除",
+        tone: "danger",
+      });
+      if (ok) {
+        await deleteDocCategory(button.dataset.categoryDelete);
+      }
+    });
+  });
+}
+
+async function saveCurrentDocument() {
+  if (!state.analysis) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const title = normalizeDocTitle(els.docNameInput.value || state.fileName || "未命名 CEO 讲话");
+  const tags = parseTags(els.tagInput.value);
+  const category = categoryById(els.docCategorySelect.value);
+  const materialSource = materialSourceById(els.materialSourceSelect?.value);
+  const materialType = materialTypeById(els.materialTypeSelect?.value);
+  const existing = state.documents.find((doc) => doc.id === state.currentDocId);
+  const materialCode = existing?.materialCode || nextMaterialCode(state.allDocuments.map((doc) => doc.materialCode).filter(Boolean));
+  const doc = {
+    id: state.currentDocId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    materialCode,
+    title,
+    fileName: state.fileName || title,
+    categoryId: category?.id || "",
+    categoryName: category?.name || "",
+    materialSourceId: materialSource?.id || "",
+    materialSourceName: materialSource?.name || "",
+    materialTypeId: materialType?.id || "",
+    materialTypeName: materialType?.name || "",
+    materialTypeTemplate: materialType?.name || "",
+    tags,
+    rawText: state.rawText,
+    analysis: state.analysis,
+    ownerEmail: state.currentUser.email,
+    ownerEmailKey: state.currentUser.emailKey,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    lastStudiedAt: now,
+  };
+
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(doc));
+  await logEvent("upload", { docId: doc.id, title: doc.title });
+  state.currentDocId = doc.id;
+  await loadDocuments();
+  return doc;
+}
+
+function withSkillMetadata(analysis, skill) {
+  return {
+    ...analysis,
+    skillId: skill.id,
+    skillName: skill.name,
+    skillVersion: skill.version,
+    skillSummary: skill.summary,
+    targetMaterialTypeId: skill.targetMaterialTypeId || "type-executive-view",
+    targetMaterialTypeName: skill.targetMaterialTypeName || "高层视角",
+    skillFileName: skill.skillFileName || "SKILL.md",
+    skillAppliedAt: new Date().toISOString(),
+  };
+}
+
+async function saveAnalyzedDocument(item, analysis) {
+  const now = new Date().toISOString();
+  const materialSource = materialSourceByKey(item.materialSourceId, item.materialSourceName);
+  const materialType = materialTypeByKey(item.materialTypeId, item.materialTypeName);
+  const skill = item.skill || currentTopicSkill(materialType?.id || item.materialTypeId || "type-executive-view");
+  const category = categoryById("preset-other");
+  const existingDoc = item.overwrite && item.existingDocId
+    ? state.allDocuments.find((doc) => doc.id === item.existingDocId)
+    : null;
+  const materialCode = existingDoc?.materialCode || nextMaterialCode(state.allDocuments.map((doc) => doc.materialCode).filter(Boolean));
+  const codedAnalysis = preserveTopicFavorites(existingDoc, withSkillMetadata(assignTopicCodesToAnalysis(analysis, existingDoc?.id || ""), skill));
+  const skillAnalyses = { ...(existingDoc?.skillAnalyses || {}), [skill.version]: codedAnalysis };
+  const doc = {
+    id: existingDoc?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    materialCode,
+    title: normalizeDocTitle(item.title || item.fileName || "未命名材料"),
+    fileName: item.fileName || item.title,
+    fileSize: item.fileSize || 0,
+    fileFingerprint: item.fileFingerprint || materialFingerprint(item.fileName, item.fileSize, item.rawText),
+    categoryId: category?.id || "",
+    categoryName: category?.name || "其他",
+    materialSourceId: materialSource?.id || "",
+    materialSourceName: materialSource?.name || "",
+    materialTypeId: materialType?.id || "",
+    materialTypeName: materialType?.name || "",
+    materialTypeTemplate: materialType?.name || "",
+    tags: codedAnalysis.suggestedTags || [],
+    rawText: item.rawText,
+    analysis: codedAnalysis,
+    skillAnalyses,
+    currentSkillVersion: skill.version,
+    currentSkillName: skill.name,
+    currentSkillAppliedAt: now,
+    ownerEmail: state.currentUser.email,
+    ownerEmailKey: state.currentUser.emailKey,
+    createdAt: existingDoc?.createdAt || now,
+    updatedAt: now,
+    lastStudiedAt: now,
+  };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(doc));
+  await logEvent("upload", { docId: doc.id, title: doc.title });
+  await loadDocuments();
+  return doc;
+}
+
+async function deleteDocument(id) {
+  const doc = state.allDocuments.find((item) => item.id === id);
+  if (!doc || (!isAdmin() && doc.ownerEmailKey !== state.currentUser.emailKey)) {
+    return;
+  }
+  const updated = {
+    ...doc,
+    deletedAt: new Date().toISOString(),
+    deletedBy: state.currentUser.email,
+    updatedAt: new Date().toISOString(),
+  };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await logEvent("delete_doc", { docId: id, title: doc.title });
+  if (state.currentDocId === id) {
+    clearWorkspace();
+  }
+  await loadDocuments();
+}
+
+async function restoreDocument(id) {
+  if (!isAdmin()) {
+    return;
+  }
+  const doc = state.allDocuments.find((item) => item.id === id);
+  if (!doc) {
+    return;
+  }
+  const updated = { ...doc, deletedAt: "", deletedBy: "", updatedAt: new Date().toISOString() };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await logEvent("restore_doc", { docId: id, title: doc.title });
+  await loadDocuments();
+}
+
+async function hardDeleteDocument(id) {
+  if (!isAdmin()) {
+    return;
+  }
+  const doc = state.allDocuments.find((item) => item.id === id);
+  if (!doc) {
+    return;
+  }
+  await withStore(DOC_STORE, "readwrite", (store) => store.delete(id));
+  await logEvent("hard_delete_doc", { docId: id, title: doc.title });
+  await loadDocuments();
+}
+
+function parseTags(value) {
+  return [...new Set(
+    String(value || "")
+      .split(/[,，、\s]+/)
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .slice(0, 8),
+  )];
+}
+
+function normalizeDocTitle(value) {
+  return String(value || "").trim().slice(0, 80) || "未命名 CEO 讲话";
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim();
+}
+
+function emailKey(value) {
+  return normalizeEmail(value).toLowerCase();
+}
+
+function isFanruanEmail(value) {
+  return /^[^\s@]+@fanruan\.com$/i.test(normalizeEmail(value));
+}
+
+function isAdmin(user = state.currentUser) {
+  return Boolean(user && user.role === "admin");
+}
+
+function validatePassword(password) {
+  const rules = [
+    { ok: password.length >= 10, text: "至少 10 位" },
+    { ok: /[A-Z]/.test(password), text: "包含大写字母" },
+    { ok: /[a-z]/.test(password), text: "包含小写字母" },
+    { ok: /\d/.test(password), text: "包含数字" },
+    { ok: /[^A-Za-z0-9]/.test(password), text: "包含特殊字符" },
+  ];
+  const failed = rules.filter((rule) => !rule.ok).map((rule) => rule.text);
+  return {
+    ok: failed.length === 0,
+    message: failed.length ? `密码复杂度不足：${failed.join("、")}。` : "",
+  };
+}
+
+function selectedRememberDuration() {
+  return [...els.rememberDuration].find((input) => input.checked)?.value || "7";
+}
+
+function rememberLabel(value) {
+  if (value === "forever") {
+    return "永远";
+  }
+  return `${value} 天`;
+}
+
+function buildSession(emailKeyValue, duration) {
+  const now = Date.now();
+  const expiresAt = duration === "forever"
+    ? null
+    : now + Number(duration || 7) * 24 * 60 * 60 * 1000;
+  return {
+    emailKey: emailKeyValue,
+    remember: duration || "7",
+    createdAt: now,
+    expiresAt,
+  };
+}
+
+function saveSession(emailKeyValue, duration) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(buildSession(emailKeyValue, duration)));
+  localStorage.removeItem("ceo-speech-current-user");
+}
+
+function readSession() {
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) {
+    const legacyKey = localStorage.getItem("ceo-speech-current-user");
+    return legacyKey ? buildSession(legacyKey, "7") : null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    clearSession();
+    return null;
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem("ceo-speech-current-user");
+}
+
+function isSessionExpired(session) {
+  return Boolean(session?.expiresAt && Date.now() > session.expiresAt);
+}
+
+function randomPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+  const array = new Uint32Array(14);
+  crypto.getRandomValues(array);
+  const raw = [...array].map((value) => chars[value % chars.length]).join("");
+  return `F${raw}9!a`;
+}
+
+async function hashPassword(password, salt = crypto.randomUUID()) {
+  const bytes = new TextEncoder().encode(`${salt}:${password}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
+  const hash = [...new Uint8Array(hashBuffer)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return { salt, hash };
+}
+
+async function verifyPassword(password, user) {
+  if (!user?.passwordHash || !user?.salt) {
+    return false;
+  }
+  const hashed = await hashPassword(password, user.salt);
+  return hashed.hash === user.passwordHash;
+}
+
+function storeRequest(store, requestFactory) {
+  return new Promise((resolve, reject) => {
+    const request = requestFactory(store);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getUser(email) {
+  const key = emailKey(email);
+  return withStore(USER_STORE, "readonly", (store) => storeRequest(store, (s) => s.get(key)));
+}
+
+async function putUser(user) {
+  await withStore(USER_STORE, "readwrite", (store) => store.put(user));
+}
+
+async function loadUsers() {
+  const users = await withStore(USER_STORE, "readonly", (store) => storeRequest(store, (s) => s.getAll()));
+  state.users = users.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (isAdmin()) {
+    renderAdminPage();
+  }
+}
+
+async function ensureAdminUser() {
+  const existing = await getUser(ADMIN_EMAIL);
+  if (existing) {
+    return existing;
+  }
+  const now = new Date().toISOString();
+  const password = await hashPassword(DEFAULT_ADMIN_PASSWORD);
+  const admin = {
+    email: ADMIN_EMAIL,
+    emailKey: ADMIN_EMAIL_KEY,
+    role: "admin",
+    status: "active",
+    passwordHash: password.hash,
+    salt: password.salt,
+    createdAt: now,
+    registeredAt: now,
+    approvedAt: now,
+    lastLoginAt: "",
+    loginCount: 0,
+    visitCount: 0,
+    passwordChangedAt: "",
+    pendingReset: false,
+    resetRequestedAt: "",
+    initialPasswordGeneratedAt: now,
+  };
+  await putUser(admin);
+  return admin;
+}
+
+function selectedTheme() {
+  const themeId = state.currentUser?.theme || THEMES[0].id;
+  return THEMES.find((theme) => theme.id === themeId) || THEMES[0];
+}
+
+function readDeepSeekSettings() {
+  return {
+    ...DEFAULT_DEEPSEEK_SETTINGS,
+    ...(state.currentUser?.deepseekSettings || {}),
+  };
+}
+
+async function saveDeepSeekSettings(settings) {
+  if (!state.currentUser) {
+    return;
+  }
+  const updated = {
+    ...state.currentUser,
+    deepseekSettings: {
+      ...DEFAULT_DEEPSEEK_SETTINGS,
+      ...settings,
+    },
+    deepseekSettingsUpdatedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+}
+
+function readFontSettings() {
+  return { ...DEFAULT_FONT_SETTINGS, ...(state.currentUser?.fontSettings || {}) };
+}
+
+function saveFontSettings(settings) {
+  const next = {
+    ...DEFAULT_FONT_SETTINGS,
+    ...settings,
+  };
+  if (state.currentUser) {
+    const updated = { ...state.currentUser, fontSettings: next, fontSettingsUpdatedAt: new Date().toISOString() };
+    state.currentUser = updated;
+    putUser(updated).catch(() => {});
+  }
+}
+
+function applyFontSettings(settings = readFontSettings()) {
+  const merged = { ...DEFAULT_FONT_SETTINGS, ...settings };
+  state.fontSettings = merged;
+  const root = document.documentElement;
+  root.style.setProperty("--body-font-size", merged.bodySize);
+  root.style.setProperty("--button-font-size", merged.buttonSize);
+  root.style.setProperty("--title-font-size", merged.titleSize);
+}
+
+function readConfigList(key, defaults) {
+  const userItems = key === MATERIAL_SOURCES_KEY
+    ? state.currentUser?.materialSources
+    : state.currentUser?.materialTypes;
+  const custom = Array.isArray(userItems) ? userItems : [];
+  const mergedDefaults = defaults.map((def) => {
+    const override = custom.find((item) => item.id === def.id);
+    return override ? { ...def, ...override, isPreset: def.isPreset } : def;
+  });
+  const extraCustom = custom.filter((item) => !defaults.some((def) => def.id === item.id));
+  return [...mergedDefaults, ...extraCustom];
+}
+
+async function saveConfigList(key, defaults, items) {
+  const custom = items
+    .filter((item) => {
+      const def = defaults.find((entry) => entry.id === item.id);
+      if (!def) {
+        return !item.isPreset;
+      }
+      return item.name !== def.name;
+    })
+    .map((item) => {
+      const def = defaults.find((entry) => entry.id === item.id);
+      return def ? { ...item, isPreset: def.isPreset } : { ...item, isPreset: false };
+    });
+  if (!state.currentUser) {
+    return;
+  }
+  const field = key === MATERIAL_SOURCES_KEY ? "materialSources" : "materialTypes";
+  const updated = {
+    ...state.currentUser,
+    [field]: custom,
+    materialTaxonomyUpdatedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+}
+
+function loadMaterialTaxonomy() {
+  state.materialSources = readConfigList(MATERIAL_SOURCES_KEY, DEFAULT_MATERIAL_SOURCES);
+  state.materialTypes = readConfigList(MATERIAL_TYPES_KEY, DEFAULT_MATERIAL_TYPES);
+  renderMaterialControls();
+}
+
+function loadTopicSkills() {
+  const custom = Array.isArray(state.currentUser?.topicSkills) ? state.currentUser.topicSkills : [];
+  const normalizedCustom = custom.map((item) => {
+    const type = materialTypeById(item.targetMaterialTypeId || "type-executive-view");
+    const typeName = type?.name || item.targetMaterialTypeName || "高层视角";
+    return {
+      targetMaterialTypeId: item.targetMaterialTypeId || "type-executive-view",
+      ...item,
+      name: skillNameForMaterialTypeName(typeName),
+      targetMaterialTypeName: typeName,
+      skillFileName: item.skillFileName || skillFileNameForMaterialTypeName(typeName),
+      changeLog: Array.isArray(item.changeLog) ? item.changeLog : [],
+    };
+  });
+  const defaultSkills = [
+    topicSkillTemplateForMaterialType("type-executive-view"),
+    topicSkillTemplateForMaterialType("type-meeting-notes"),
+  ];
+  state.topicSkills = [...defaultSkills, ...normalizedCustom.filter((item) => item.version !== DEFAULT_TOPIC_SKILL.version || (item.targetMaterialTypeId || "type-executive-view") !== "type-executive-view")]
+    .sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
+}
+
+function currentTopicSkill(materialTypeId = "type-executive-view") {
+  const scoped = state.topicSkills.filter((skill) => (skill.targetMaterialTypeId || "type-executive-view") === materialTypeId);
+  return scoped[0] || topicSkillTemplateForMaterialType(materialTypeId);
+}
+
+function skillByVersion(version, materialTypeId = "type-executive-view") {
+  return state.topicSkills.find((skill) => skill.version === version && (skill.targetMaterialTypeId || "type-executive-view") === materialTypeId)
+    || state.topicSkills.find((skill) => skill.version === version)
+    || currentTopicSkill(materialTypeId);
+}
+
+function skillVersionNumber(version) {
+  const matched = String(version || "").match(/v\d+\.(\d+)/i);
+  if (matched) {
+    return Number(matched[1]) + 1;
+  }
+  return 0;
+}
+
+function skillMetaForAnalysis(version, analysis) {
+  const targetTypeId = analysis?.targetMaterialTypeId || "type-executive-view";
+  const targetTypeName = materialTypeById(targetTypeId)?.name || analysis?.targetMaterialTypeName || "高层视角";
+  const ownedSkill = state.topicSkills.find((skill) => skill.version === version && (skill.targetMaterialTypeId || "type-executive-view") === targetTypeId)
+    || state.topicSkills.find((skill) => skill.version === version);
+  if (ownedSkill) {
+    return ownedSkill;
+  }
+  return {
+    id: analysis?.skillId || `topic-skill-${version}`,
+    name: skillNameForMaterialTypeName(targetTypeName),
+    version,
+    versionNumber: skillVersionNumber(version),
+    summary: analysis?.skillSummary || "历史 SKILL 版本",
+    prompt: "",
+    targetMaterialTypeId: analysis?.targetMaterialTypeId || "type-executive-view",
+    targetMaterialTypeName: targetTypeName,
+    skillFileName: analysis?.skillFileName || skillFileNameForMaterialTypeName(targetTypeName),
+    createdAt: analysis?.skillAppliedAt || "",
+    isPreset: false,
+  };
+}
+
+function skillNameForMaterialTypeName(typeName = "高层视角") {
+  const name = String(typeName || "资料类型").trim();
+  return name === "会议纪要" ? "会议纪要分析 SKILL" : `${name}话题拆解 SKILL`;
+}
+
+function skillFileNameForMaterialTypeName(typeName = "高层视角") {
+  return `${skillNameForMaterialTypeName(typeName)}.md`;
+}
+
+function defaultTopicSkillPromptForMaterialType(typeName = "高层视角") {
+  const safeTypeName = String(typeName || "资料类型").trim();
+  if (safeTypeName === "会议纪要") {
+    return DEFAULT_MEETING_SKILL_PROMPT;
+  }
+  return DEFAULT_TOPIC_SKILL_PROMPT
+    .replace(/高层视角话题拆解 SKILL\.md/g, skillFileNameForMaterialTypeName(safeTypeName))
+    .replace(/适用材料类型：高层视角/g, `适用材料类型：${safeTypeName}`)
+    .replace(/高层视角/g, safeTypeName);
+}
+
+function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view") {
+  const type = materialTypeById(materialTypeId) || DEFAULT_MATERIAL_TYPES[0];
+  const isExecutive = materialTypeId === "type-executive-view";
+  const typeName = type.name || "高层视角";
+  return {
+    ...DEFAULT_TOPIC_SKILL,
+    id: isExecutive ? DEFAULT_TOPIC_SKILL.id : `topic-skill-default-${materialTypeId}`,
+    name: skillNameForMaterialTypeName(typeName),
+    summary: isExecutive
+      ? DEFAULT_TOPIC_SKILL.summary
+      : typeName === "会议纪要"
+        ? `面向会议纪要材料的标准${skillFileNameForMaterialTypeName(typeName)}，输出会议纪要分析并按需提炼可学习话题。`
+        : `面向${typeName}材料的初始${skillFileNameForMaterialTypeName(typeName)}，可在此基础上发布专属版本。`,
+    prompt: isExecutive
+      ? DEFAULT_TOPIC_SKILL_PROMPT
+      : defaultTopicSkillPromptForMaterialType(typeName),
+    targetMaterialTypeId: materialTypeId,
+    targetMaterialTypeName: typeName,
+    skillFileName: skillFileNameForMaterialTypeName(typeName),
+    changeLog: isExecutive
+      ? DEFAULT_TOPIC_SKILL.changeLog
+      : typeName === "会议纪要"
+        ? ["初始版本：建立会议基础信息、决策、行动项、议题讨论、协作态势、风险依赖和待定问题的分析标准。"]
+        : [`初始版本：建立${typeName}材料的话题拆解 SKILL.md 基础模版。`],
+    isPreset: true,
+  };
+}
+
+function buildSkillDiffLog(previousSkill, nextSkill) {
+  const logs = [];
+  const previousSummary = String(previousSkill?.summary || "").trim();
+  const nextSummary = String(nextSkill?.summary || "").trim();
+  if (previousSummary !== nextSummary) {
+    logs.push(`版本说明调整：由“${previousSummary || "空"}”改为“${nextSummary || "空"}”。`);
+  }
+  const previousLines = String(previousSkill?.prompt || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nextLines = String(nextSkill?.prompt || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const previousSet = new Set(previousLines);
+  const nextSet = new Set(nextLines);
+  const added = nextLines.filter((line) => !previousSet.has(line));
+  const removed = previousLines.filter((line) => !nextSet.has(line));
+  if (added.length) {
+    logs.push(`新增 ${added.length} 行规则：${added.slice(0, 3).join("；")}${added.length > 3 ? "；..." : ""}`);
+  }
+  if (removed.length) {
+    logs.push(`删除 ${removed.length} 行规则：${removed.slice(0, 3).join("；")}${removed.length > 3 ? "；..." : ""}`);
+  }
+  if (!logs.length) {
+    logs.push("与上一版内容一致，仅生成新的版本记录。");
+  }
+  return logs;
+}
+
+function skillDisplayName(skill, fallback = "SKILL.md") {
+  if (!skill) {
+    return fallback;
+  }
+  return `${skill.skillFileName || skill.name || fallback} ${skill.version || ""}`.trim();
+}
+
+function previousSkillForVersion(skill, versions) {
+  if (!skill) {
+    return null;
+  }
+  const sorted = [...versions].sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
+  const currentIndex = sorted.findIndex((item) => item.version === skill.version);
+  return currentIndex >= 0 ? sorted[currentIndex + 1] || null : null;
+}
+
+function skillChangeLogForVersion(skill, versions) {
+  const previousSkill = previousSkillForVersion(skill, versions);
+  if (!previousSkill) {
+    return Array.isArray(skill?.changeLog) && skill.changeLog.length
+      ? skill.changeLog
+      : ["初始版本：暂无上一版本可比较。"];
+  }
+  return buildSkillDiffLog(previousSkill, skill);
+}
+
+function buildSkillLineDiff(previousText, nextText) {
+  const previousLines = String(previousText || "").split(/\r?\n/);
+  const nextLines = String(nextText || "").split(/\r?\n/);
+  const nextCounts = new Map();
+  nextLines.forEach((line) => {
+    nextCounts.set(line, (nextCounts.get(line) || 0) + 1);
+  });
+  const previousCounts = new Map();
+  previousLines.forEach((line) => {
+    previousCounts.set(line, (previousCounts.get(line) || 0) + 1);
+  });
+  const previousSeen = new Map();
+  const nextSeen = new Map();
+  const left = previousLines.map((line, index) => {
+    const seen = (previousSeen.get(line) || 0) + 1;
+    previousSeen.set(line, seen);
+    const existsInNext = seen <= (nextCounts.get(line) || 0);
+    return {
+      number: index + 1,
+      text: line,
+      status: existsInNext ? "same" : "removed",
+      syncKey: existsInNext && line.trim() ? `${line}__${seen}` : "",
+    };
+  });
+  const right = nextLines.map((line, index) => {
+    const seen = (nextSeen.get(line) || 0) + 1;
+    nextSeen.set(line, seen);
+    const existsInPrevious = seen <= (previousCounts.get(line) || 0);
+    return {
+      number: index + 1,
+      text: line,
+      status: existsInPrevious ? "same" : "added",
+      syncKey: existsInPrevious && line.trim() ? `${line}__${seen}` : "",
+    };
+  });
+  return { left, right };
+}
+
+function skillDiffRowsHtml(rows) {
+  return rows.map((row) => `
+    <div class="skill-diff-line is-${escapeHtml(row.status)}"${row.syncKey ? ` data-sync-key="${escapeHtml(row.syncKey)}"` : ""}>
+      <span class="skill-diff-line-no">${escapeHtml(String(row.number))}</span>
+      <code>${escapeHtml(row.text || " ")}</code>
+    </div>
+  `).join("");
+}
+
+function bindSkillDiffScrollSync(overlay) {
+  const panes = [...overlay.querySelectorAll(".skill-diff-code")];
+  if (panes.length !== 2) {
+    return;
+  }
+  let syncing = false;
+  const findAnchorLine = (pane) => {
+    const paneRect = pane.getBoundingClientRect();
+    const lines = [...pane.querySelectorAll(".skill-diff-line[data-sync-key]")];
+    return lines.reduce((best, line) => {
+      const rect = line.getBoundingClientRect();
+      if (rect.bottom < paneRect.top || rect.top > paneRect.bottom) {
+        return best;
+      }
+      const distance = Math.abs(rect.top - paneRect.top);
+      return !best || distance < best.distance ? { line, rect, distance } : best;
+    }, null);
+  };
+  const alignPane = (source, target) => {
+    const anchor = findAnchorLine(source);
+    if (!anchor?.line?.dataset.syncKey) {
+      return;
+    }
+    const targetLine = [...target.querySelectorAll(".skill-diff-line[data-sync-key]")]
+      .find((line) => line.dataset.syncKey === anchor.line.dataset.syncKey);
+    if (!targetLine) {
+      return;
+    }
+    const sourceRect = source.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetLineRect = targetLine.getBoundingClientRect();
+    const sourceOffset = anchor.rect.top - sourceRect.top;
+    const targetOffset = targetLineRect.top - targetRect.top;
+    target.scrollTop += targetOffset - sourceOffset;
+    target.scrollLeft = source.scrollLeft;
+  };
+  panes.forEach((pane) => {
+    pane.addEventListener("scroll", () => {
+      if (syncing) {
+        return;
+      }
+      const target = panes.find((item) => item !== pane);
+      if (!target) {
+        return;
+      }
+      syncing = true;
+      requestAnimationFrame(() => {
+        alignPane(pane, target);
+        syncing = false;
+      });
+    }, { passive: true });
+  });
+}
+
+function showSkillDiffCompareModal({ title, leftSkill, rightSkill, leftLabel = "历史版本", rightLabel = "对比版本" }) {
+  if (!leftSkill || !rightSkill) {
+    return;
+  }
+  const diff = buildSkillLineDiff(leftSkill.prompt || "", rightSkill.prompt || "");
+  const diffLog = buildSkillDiffLog(leftSkill, rightSkill);
+  const overlay = document.createElement("div");
+  overlay.className = "skill-diff-overlay";
+  overlay.innerHTML = `
+    <section class="skill-diff-dialog" role="dialog" aria-modal="true" aria-labelledby="skillDiffTitle">
+      <header class="skill-diff-header">
+        <div>
+          <p class="section-kicker">Skill Diff</p>
+          <h3 id="skillDiffTitle">${escapeHtml(title || "SKILL 差异对比")}</h3>
+        </div>
+        <button class="mini-button" type="button" data-skill-diff-close>关闭</button>
+      </header>
+      <div class="skill-diff-summary">
+        <strong>差异摘要</strong>
+        <ul>${diffLog.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </div>
+      <div class="skill-diff-grid">
+        <article>
+          <h4>${escapeHtml(leftLabel)}：${escapeHtml(skillDisplayName(leftSkill, "当前 SKILL"))}</h4>
+          <div class="skill-diff-code">${skillDiffRowsHtml(diff.left)}</div>
+        </article>
+        <article>
+          <h4>${escapeHtml(rightLabel)}：${escapeHtml(skillDisplayName(rightSkill, "最新 SKILL"))}</h4>
+          <div class="skill-diff-code">${skillDiffRowsHtml(diff.right)}</div>
+        </article>
+      </div>
+    </section>
+  `;
+  const close = () => overlay.remove();
+  overlay.querySelector("[data-skill-diff-close]")?.addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      close();
+    }
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      close();
+    }
+  });
+  document.body.appendChild(overlay);
+  bindSkillDiffScrollSync(overlay);
+  overlay.querySelector("[data-skill-diff-close]")?.focus();
+}
+
+function showSkillDiffModal(docId) {
+  const doc = state.allDocuments.find((item) => item.id === docId);
+  if (!doc) {
+    return;
+  }
+  const latest = currentTopicSkill(materialTypeIdForDoc(doc) || "type-executive-view");
+  const currentVersion = doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  const currentSkill = skillByVersion(currentVersion, materialTypeIdForDoc(doc) || "type-executive-view");
+  showSkillDiffCompareModal({
+    title: `${doc.title || doc.fileName || "材料"} · SKILL 差异对比`,
+    leftSkill: currentSkill,
+    rightSkill: latest,
+    leftLabel: "当前版本",
+    rightLabel: "最新版本",
+  });
+}
+
+async function saveTopicSkills(skills) {
+  if (!state.currentUser) {
+    return;
+  }
+  const custom = skills.filter((skill) => !skill.isPreset);
+  const updated = {
+    ...state.currentUser,
+    topicSkills: custom,
+    topicSkillsUpdatedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+  loadTopicSkills();
+}
+
+async function createTopicSkillVersion(summary, prompt, changeLog = null) {
+  const summaryValue = String(summary || "").trim();
+  const promptValue = String(prompt || "").trim();
+  if (!summaryValue || !promptValue) {
+    setSkillNotice("请填写版本说明和 SKILL 提示词。", "error");
+    return;
+  }
+  const targetTypeId = state.activeSkillMaterialTypeId || "type-executive-view";
+  const targetType = materialTypeById(targetTypeId) || DEFAULT_MATERIAL_TYPES[0];
+  const scopedSkills = state.topicSkills.filter((skill) => (skill.targetMaterialTypeId || "type-executive-view") === targetTypeId);
+  const previousSkill = currentTopicSkill(targetTypeId);
+  const maxVersion = Math.max(...scopedSkills.map((skill) => Number(skill.versionNumber || 1)), 1);
+  const nextVersionNumber = maxVersion + 1;
+  const skill = {
+    id: `topic-skill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: skillNameForMaterialTypeName(targetType.name || "高层视角"),
+    version: `v1.${nextVersionNumber - 1}`,
+    versionNumber: nextVersionNumber,
+    summary: summaryValue,
+    prompt: promptValue,
+    targetMaterialTypeId: targetTypeId,
+    targetMaterialTypeName: targetType.name || "高层视角",
+    skillFileName: skillFileNameForMaterialTypeName(targetType.name || "高层视角"),
+    changeLog: Array.isArray(changeLog) && changeLog.length ? changeLog : buildSkillDiffLog(previousSkill, { summary: summaryValue, prompt: promptValue }),
+    createdAt: new Date().toISOString(),
+    isPreset: false,
+  };
+  await saveTopicSkills([...state.topicSkills, skill]);
+  setSkillNotice(`已发布${skill.targetMaterialTypeName}话题 SKILL ${skill.version}。材料列表会提示可刷新到新版本。`, "success");
+  renderTopicSkillPage();
+  renderMaterialOverviewPage();
+}
+
+function setSkillNotice(message, tone = "info") {
+  state.skillNotice = { message, tone };
+  const node = els.topicSkillPage?.querySelector("#topicSkillNotice");
+  if (node) {
+    node.textContent = message;
+    node.dataset.tone = tone;
+  }
+}
+
+function renderMaterialControls() {
+  if (els.materialSourceSelect) {
+    const value = els.materialSourceSelect.value;
+    els.materialSourceSelect.innerHTML = state.materialSources
+      .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`)
+      .join("");
+    els.materialSourceSelect.value = value || state.materialSources[0]?.id || "";
+  }
+  if (els.materialTypeSelect) {
+    const value = els.materialTypeSelect.value;
+    els.materialTypeSelect.innerHTML = state.materialTypes
+      .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`)
+      .join("");
+    els.materialTypeSelect.value = value || state.materialTypes[0]?.id || "";
+  }
+  renderTopicFilters();
+  renderUploadMaterialList();
+  renderPendingUploadMaterialList();
+}
+
+function normalizeKeyText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function materialSourceById(id) {
+  return state.materialSources.find((item) => item.id === id) || null;
+}
+
+function materialTypeById(id) {
+  return state.materialTypes.find((item) => item.id === id) || null;
+}
+
+function materialSourceByKey(id, name = "") {
+  return materialSourceById(id)
+    || state.materialSources.find((item) => normalizeKeyText(item.name) === normalizeKeyText(name))
+    || null;
+}
+
+function materialTypeByKey(id, name = "") {
+  return materialTypeById(id)
+    || state.materialTypes.find((item) => normalizeKeyText(item.name) === normalizeKeyText(name))
+    || null;
+}
+
+function materialSourceForDoc(doc) {
+  return materialSourceByKey(doc?.materialSourceId, doc?.materialSourceName || doc?.categoryName)
+    || (!doc?.materialSourceId && !doc?.materialSourceName ? state.materialSources[0] || null : null);
+}
+
+function materialTypeForDoc(doc) {
+  return materialTypeByKey(
+    doc?.materialTypeId || doc?.analysis?.targetMaterialTypeId,
+    doc?.materialTypeName || doc?.materialTypeTemplate || doc?.analysis?.targetMaterialTypeName,
+  ) || (!doc?.materialTypeId && !doc?.materialTypeName ? state.materialTypes[0] || null : null);
+}
+
+function materialSourceIdForDoc(doc) {
+  return materialSourceForDoc(doc)?.id || doc?.materialSourceId || "";
+}
+
+function materialTypeIdForDoc(doc) {
+  return materialTypeForDoc(doc)?.id || doc?.materialTypeId || "";
+}
+
+function materialSourceNameForDoc(doc) {
+  return materialSourceForDoc(doc)?.name || doc?.materialSourceName || "未设置来源";
+}
+
+function materialTypeNameForDoc(doc) {
+  return materialTypeForDoc(doc)?.name || doc?.materialTypeName || "未设置类型";
+}
+
+function normalizeDocumentMaterialKeys(doc) {
+  const source = materialSourceForDoc(doc);
+  const type = materialTypeForDoc(doc);
+  const next = {
+    ...doc,
+    materialSourceId: source?.id || doc.materialSourceId || "",
+    materialSourceName: source?.name || doc.materialSourceName || "",
+    materialTypeId: type?.id || doc.materialTypeId || "",
+    materialTypeName: type?.name || doc.materialTypeName || "",
+    materialTypeTemplate: type?.name || doc.materialTypeTemplate || "",
+  };
+  const changed = next.materialSourceId !== doc.materialSourceId
+    || next.materialSourceName !== doc.materialSourceName
+    || next.materialTypeId !== doc.materialTypeId
+    || next.materialTypeName !== doc.materialTypeName
+    || next.materialTypeTemplate !== doc.materialTypeTemplate;
+  return { doc: changed ? { ...next, updatedAt: doc.updatedAt || new Date().toISOString() } : doc, changed };
+}
+
+async function normalizeCurrentUserMaterialReferences() {
+  if (!state.currentUser) {
+    return;
+  }
+  const docs = state.allDocuments.filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === state.currentUser.emailKey);
+  const normalized = docs
+    .map(normalizeDocumentMaterialKeys)
+    .filter((item) => item.changed)
+    .map((item) => item.doc);
+  if (normalized.length) {
+    await withStore(DOC_STORE, "readwrite", (store) => {
+      normalized.forEach((doc) => store.put(doc));
+    });
+    state.allDocuments = state.allDocuments.map((doc) => normalized.find((item) => item.id === doc.id) || doc);
+    state.documents = state.documents.map((doc) => normalized.find((item) => item.id === doc.id) || doc);
+  }
+  if (state.uploadItems.length) {
+    let pendingChanged = false;
+    state.uploadItems = state.uploadItems.map((item) => {
+      const source = materialSourceByKey(item.materialSourceId, item.materialSourceName);
+      const type = materialTypeByKey(item.materialTypeId, item.materialTypeName);
+      const next = {
+        ...item,
+        materialSourceId: source?.id || item.materialSourceId || "",
+        materialSourceName: source?.name || item.materialSourceName || "",
+        materialTypeId: type?.id || item.materialTypeId || "",
+        materialTypeName: type?.name || item.materialTypeName || "",
+      };
+      pendingChanged = pendingChanged || JSON.stringify(next) !== JSON.stringify(item);
+      return next;
+    });
+    if (pendingChanged) {
+      await persistPendingUploads();
+    }
+  }
+}
+
+function validateMaterialConfigName(value, label) {
+  const name = String(value || "").trim();
+  if (!name) {
+    setMaterialConfigNotice(`${label}不能为空。`, "error");
+    return "";
+  }
+  if (name.length > 20) {
+    setMaterialConfigNotice(`${label}不能超过20个字符。`, "error");
+    return "";
+  }
+  return name;
+}
+
+async function createMaterialSource(name) {
+  const value = validateMaterialConfigName(name, "资料来源名称");
+  if (!value) {
+    return;
+  }
+  const item = {
+    id: `source-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: value,
+    isPreset: false,
+  };
+  const custom = state.materialSources.filter((source) => !source.isPreset);
+  await saveConfigList(MATERIAL_SOURCES_KEY, DEFAULT_MATERIAL_SOURCES, [...custom, item]);
+  loadMaterialTaxonomy();
+  setMaterialConfigNotice(`已添加资料来源：${value}`, "success");
+}
+
+async function createMaterialType(name) {
+  const value = validateMaterialConfigName(name, "资料类型名称");
+  if (!value) {
+    return;
+  }
+  const item = {
+    id: `type-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: value,
+    isPreset: false,
+  };
+  const custom = state.materialTypes.filter((type) => !type.isPreset);
+  await saveConfigList(MATERIAL_TYPES_KEY, DEFAULT_MATERIAL_TYPES, [...custom, item]);
+  loadMaterialTaxonomy();
+  setMaterialConfigNotice(`已添加资料类型：${value}`, "success");
+}
+
+async function updateMaterialSourceConfig(id, name) {
+  const value = validateMaterialConfigName(name, "资料来源名称");
+  if (!id || !value) {
+    return;
+  }
+  const current = state.materialSources;
+  const item = current.find((entry) => entry.id === id);
+  if (!item) {
+    setMaterialConfigNotice("请选择要修改的资料来源。", "error");
+    return;
+  }
+  const nextItems = current.map((entry) => (entry.id === id ? { ...entry, name: value } : entry));
+  await saveConfigList(MATERIAL_SOURCES_KEY, DEFAULT_MATERIAL_SOURCES, nextItems);
+  loadMaterialTaxonomy();
+  await updateDocumentsForMaterialConfig("source", id, value, item.name);
+  setMaterialConfigNotice(`已更新资料来源：${value}`, "success");
+}
+
+async function updateMaterialTypeConfig(id, name) {
+  const value = validateMaterialConfigName(name, "资料类型名称");
+  if (!id || !value) {
+    return;
+  }
+  const current = state.materialTypes;
+  const item = current.find((entry) => entry.id === id);
+  if (!item) {
+    setMaterialConfigNotice("请选择要修改的资料类型。", "error");
+    return;
+  }
+  const nextItems = current.map((entry) => (entry.id === id ? { ...entry, name: value } : entry));
+  await saveConfigList(MATERIAL_TYPES_KEY, DEFAULT_MATERIAL_TYPES, nextItems);
+  loadMaterialTaxonomy();
+  await updateDocumentsForMaterialConfig("type", id, value, item.name);
+  await syncTopicSkillMaterialTypeName(id, value);
+  loadTopicSkills();
+  renderTopicSkillPage();
+  setMaterialConfigNotice(`已更新资料类型：${value}`, "success");
+}
+
+async function updateDocumentsForMaterialConfig(kind, id, name, previousName = "") {
+  const docs = state.allDocuments.filter((doc) => {
+    if ((doc.ownerEmailKey || "").toLowerCase() !== state.currentUser?.emailKey) {
+      return false;
+    }
+    return kind === "source"
+      ? doc.materialSourceId === id || normalizeKeyText(doc.materialSourceName) === normalizeKeyText(previousName)
+      : doc.materialTypeId === id || normalizeKeyText(doc.materialTypeName) === normalizeKeyText(previousName) || normalizeKeyText(doc.materialTypeTemplate) === normalizeKeyText(previousName);
+  });
+  if (docs.length) {
+    await withStore(DOC_STORE, "readwrite", (store) => {
+      docs.forEach((doc) => {
+        const updated = kind === "source"
+          ? { ...doc, materialSourceId: id, materialSourceName: name, updatedAt: new Date().toISOString() }
+          : { ...doc, materialTypeId: id, materialTypeName: name, materialTypeTemplate: name, updatedAt: new Date().toISOString() };
+        store.put(updated);
+      });
+    });
+  }
+  if (state.uploadItems.length) {
+    let changed = false;
+    state.uploadItems = state.uploadItems.map((item) => {
+      const matched = kind === "source"
+        ? item.materialSourceId === id || normalizeKeyText(item.materialSourceName) === normalizeKeyText(previousName)
+        : item.materialTypeId === id || normalizeKeyText(item.materialTypeName) === normalizeKeyText(previousName);
+      if (!matched) {
+        return item;
+      }
+      changed = true;
+      return kind === "source"
+        ? { ...item, materialSourceId: id, materialSourceName: name }
+        : { ...item, materialTypeId: id, materialTypeName: name };
+    });
+    if (changed) {
+      await persistPendingUploads();
+    }
+  }
+  await loadDocuments();
+}
+
+async function syncTopicSkillMaterialTypeName(typeId, typeName) {
+  if (!state.currentUser) {
+    return;
+  }
+  const custom = Array.isArray(state.currentUser.topicSkills) ? state.currentUser.topicSkills : [];
+  const nextSkills = custom.map((skill) => (
+    (skill.targetMaterialTypeId || "type-executive-view") === typeId
+      ? {
+          ...skill,
+          name: skillNameForMaterialTypeName(typeName),
+          targetMaterialTypeName: typeName,
+          skillFileName: skillFileNameForMaterialTypeName(typeName),
+        }
+      : skill
+  ));
+  if (JSON.stringify(custom) === JSON.stringify(nextSkills)) {
+    return;
+  }
+  const updated = {
+    ...state.currentUser,
+    topicSkills: nextSkills,
+    topicSkillsUpdatedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+}
+
+async function deleteMaterialConfig(kind, id) {
+  if (!id) {
+    return;
+  }
+  const defaults = kind === "source" ? DEFAULT_MATERIAL_SOURCES : DEFAULT_MATERIAL_TYPES;
+  const current = kind === "source" ? state.materialSources : state.materialTypes;
+  const item = current.find((entry) => entry.id === id);
+  if (!item || item.isPreset) {
+    return;
+  }
+  const custom = current.filter((entry) => entry.id !== id);
+  await saveConfigList(kind === "source" ? MATERIAL_SOURCES_KEY : MATERIAL_TYPES_KEY, defaults, custom);
+  loadMaterialTaxonomy();
+  setMaterialConfigNotice(`已删除${kind === "source" ? "资料来源" : "资料类型"}：${item.name}`, "success");
+}
+
+function setMaterialConfigNotice(message, tone = "info") {
+  state.materialConfigNotice = { message, tone };
+  const messageNode = els.materialManagePage?.querySelector("#materialConfigMessage");
+  if (messageNode) {
+    messageNode.textContent = message;
+    messageNode.dataset.tone = tone;
+  }
+}
+
+function mergeTopicAnalyses(itemResults) {
+  const topics = [];
+  const activeCategories = [];
+  const quotes = [];
+  const suggestedTags = [];
+  const sourceMap = new Map();
+
+  itemResults.forEach(({ item, analysis }) => {
+    sourceMap.set(item.title, analysis);
+    (analysis.topics || []).forEach((topic, index) => {
+      topics.push({
+        ...topic,
+        globalIndex: topics.length + 1,
+        sourceSummary: topic.sourceSummary || `${item.title} · ${topic.title}`,
+        sourceDocId: item.fileName,
+        sourceDocTitle: item.title,
+        sourceDocName: item.fileName,
+        sourceMaterialType: materialTypeByKey(item.materialTypeId, item.materialTypeName)?.name || "高层视角",
+        sourceMaterialTypeId: materialTypeByKey(item.materialTypeId, item.materialTypeName)?.id || item.materialTypeId || "",
+        sourceMaterialSourceId: materialSourceByKey(item.materialSourceId, item.materialSourceName)?.id || item.materialSourceId || "",
+        sourceMaterialSourceName: materialSourceByKey(item.materialSourceId, item.materialSourceName)?.name || "CEO Marks",
+        updatedAt: new Date().toISOString(),
+        sourceAnalysisIndex: index,
+      });
+    });
+    (analysis.activeCategories || []).forEach((group) => {
+      const existing = activeCategories.find((itemGroup) => itemGroup.category.id === group.category.id);
+      if (existing) {
+        existing.items.push(...group.items);
+      } else {
+        activeCategories.push({
+          category: group.category,
+          items: [...group.items],
+        });
+      }
+    });
+    quotes.push(...(analysis.quotes || []));
+    suggestedTags.push(...(analysis.suggestedTags || []));
+  });
+
+  return {
+    analysis: {
+      text: itemResults.map((entry) => `【${entry.item.title}】\n${entry.item.rawText}`).join("\n\n"),
+      sentences: itemResults.flatMap((entry) => entry.analysis.sentences || []),
+      grouped: itemResults[0]?.analysis.grouped || {},
+      overview: {
+        oneLine: itemResults.map((entry) => entry.analysis.overview.oneLine).join("；"),
+        logicLine: itemResults.map((entry) => entry.analysis.overview.logicLine).join("；"),
+        wordCount: itemResults.reduce((sum, entry) => sum + Number(entry.analysis.overview.wordCount || 0), 0),
+      },
+      topics,
+      quotes: [...new Set(quotes)].slice(0, 10),
+      activeCategories,
+      suggestedTags: [...new Set(suggestedTags)].slice(0, 8),
+      deepeningModes: itemResults[0]?.analysis.deepeningModes || deepeningModes,
+      analysisSource: "deepseek",
+    },
+  };
+}
+
+function formatFileSize(size) {
+  if (size >= 1024 * 1024) {
+    return `${(size / 1024 / 1024).toFixed(1)}MB`;
+  }
+  if (size >= 1024) {
+    return `${Math.round(size / 1024)}KB`;
+  }
+  return `${size || 0}B`;
+}
+
+function materialFingerprint(fileName, size, rawText = "") {
+  const text = normalizeText(rawText || "");
+  return [
+    String(fileName || "").trim().toLowerCase(),
+    Number(size || 0),
+    text.length,
+    text.slice(0, 80),
+    text.slice(-80),
+  ].join("|");
+}
+
+function topicCodeFromNumber(number) {
+  const index = Math.max(1, Number(number || 1));
+  const prefixIndex = Math.floor((index - 1) / 9999);
+  const startPrefixIndex = (19 * 26) + 2; // TC
+  const currentPrefixIndex = (startPrefixIndex + prefixIndex) % (26 * 26);
+  const first = String.fromCharCode(65 + Math.floor(currentPrefixIndex / 26));
+  const second = String.fromCharCode(65 + (currentPrefixIndex % 26));
+  const serial = ((index - 1) % 9999) + 1;
+  return `${first}${second}${String(serial).padStart(4, "0")}`;
+}
+
+function materialCodeFromNumber(number) {
+  const index = Math.max(1, Number(number || 1));
+  const prefixIndex = Math.floor((index - 1) / 9999);
+  const startPrefixIndex = (12 * 26); // MA
+  const currentPrefixIndex = (startPrefixIndex + prefixIndex) % (26 * 26);
+  const first = String.fromCharCode(65 + Math.floor(currentPrefixIndex / 26));
+  const second = String.fromCharCode(65 + (currentPrefixIndex % 26));
+  const serial = ((index - 1) % 9999) + 1;
+  return `${first}${second}${String(serial).padStart(4, "0")}`;
+}
+
+function allMaterialCodes(excludedDocId = "") {
+  return state.allDocuments
+    .filter((doc) => doc.id !== excludedDocId)
+    .map((doc) => doc.materialCode)
+    .filter(Boolean);
+}
+
+function nextMaterialCode(existingCodes) {
+  let next = 1;
+  const used = new Set(existingCodes);
+  while (used.has(materialCodeFromNumber(next))) {
+    next += 1;
+  }
+  return materialCodeFromNumber(next);
+}
+
+function normalizeMaterialCodeRank(doc) {
+  const created = new Date(doc?.createdAt || doc?.updatedAt || 0).getTime();
+  const updated = new Date(doc?.updatedAt || doc?.createdAt || 0).getTime();
+  return [Number.isFinite(created) ? created : 0, Number.isFinite(updated) ? updated : 0, String(doc?.id || "")];
+}
+
+function ensureUniqueMaterialCodes(docs = []) {
+  const sorted = [...docs].sort((a, b) => {
+    const [ac, au, aid] = normalizeMaterialCodeRank(a);
+    const [bc, bu, bid] = normalizeMaterialCodeRank(b);
+    return ac - bc || au - bu || aid.localeCompare(bid);
+  });
+  const used = new Set();
+  let next = 1;
+  const updates = [];
+  for (const doc of sorted) {
+    const current = String(doc?.materialCode || "").trim();
+    let assigned = current;
+    const duplicate = !assigned || used.has(assigned);
+    if (duplicate) {
+      while (used.has(materialCodeFromNumber(next))) {
+        next += 1;
+      }
+      assigned = materialCodeFromNumber(next);
+      next += 1;
+      updates.push({ ...doc, materialCode: assigned, updatedAt: doc.updatedAt || new Date().toISOString() });
+    } else {
+      used.add(assigned);
+      const match = assigned.match(/^([A-Z]{2})(\d{4})$/);
+      if (match) {
+        next = Math.max(next, Number(match[2]) + 1);
+      }
+    }
+    used.add(assigned);
+  }
+  return updates;
+}
+
+function materialDisplayCode(doc) {
+  if (doc?.materialCode) {
+    return doc.materialCode;
+  }
+  return "未编号";
+}
+
+function nextTopicCode(existingCodes) {
+  let next = 1;
+  const used = new Set(existingCodes);
+  while (used.has(topicCodeFromNumber(next))) {
+    next += 1;
+  }
+  return topicCodeFromNumber(next);
+}
+
+function allTopicCodes(excludedDocId = "") {
+  return state.allDocuments
+    .filter((doc) => doc.id !== excludedDocId)
+    .flatMap((doc) => doc.analysis?.topics || [])
+    .map((topic) => topic.topicCode)
+    .filter(Boolean);
+}
+
+function assignTopicCodesToAnalysis(analysis, excludedDocId = "", extraExistingCodes = []) {
+  const usedCodes = new Set([...allTopicCodes(excludedDocId), ...extraExistingCodes.filter(Boolean)]);
+  const topics = (analysis?.topics || []).map((topic) => {
+    if (topic.topicCode && !usedCodes.has(topic.topicCode)) {
+      usedCodes.add(topic.topicCode);
+      return topic;
+    }
+    const code = nextTopicCode(usedCodes);
+    usedCodes.add(code);
+    return { ...topic, topicCode: code };
+  });
+  return { ...analysis, topics };
+}
+
+function preserveTopicFavorites(previousDoc, analysis) {
+  if (!previousDoc?.analysis?.topics?.length || !analysis?.topics?.length) {
+    return analysis;
+  }
+  const previousTopics = Object.values(docSkillAnalyses(previousDoc))
+    .flatMap((item) => item?.topics || [])
+    .filter((topic) => topic?.favorite);
+  if (!previousTopics.length) {
+    return analysis;
+  }
+  const favoriteCodes = new Set(previousTopics.map((topic) => topic.topicCode).filter(Boolean));
+  const favoriteTitles = new Set(previousTopics.map((topic) => String(topic.title || "").trim()).filter(Boolean));
+  return {
+    ...analysis,
+    topics: (analysis.topics || []).map((topic) => ({
+      ...topic,
+      favorite: Boolean(topic.favorite || favoriteCodes.has(topic.topicCode) || favoriteTitles.has(String(topic.title || "").trim())),
+    })),
+  };
+}
+
+function findDuplicateDocument(item) {
+  if (!state.currentUser || !item) {
+    return null;
+  }
+  const ownerDocs = state.allDocuments.filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === state.currentUser.emailKey);
+  const fingerprint = item.fileFingerprint || materialFingerprint(item.fileName, item.fileSize, item.rawText);
+  return ownerDocs.find((doc) => doc.fileFingerprint && doc.fileFingerprint === fingerprint)
+    || ownerDocs.find((doc) => normalizeText(doc.rawText || "") && normalizeText(doc.rawText || "") === normalizeText(item.rawText || ""))
+    || ownerDocs.find((doc) => String(doc.fileName || doc.title || "").trim().toLowerCase() === String(item.fileName || item.title || "").trim().toLowerCase())
+    || null;
+}
+
+function pendingUploadKey(item) {
+  return String(item?.id || item?.fileFingerprint || materialFingerprint(item?.fileName, item?.fileSize, item?.rawText));
+}
+
+function pendingUploadMatchesDoc(item, doc) {
+  if (!item || !doc) {
+    return false;
+  }
+  const itemFingerprint = item.fileFingerprint || materialFingerprint(item.fileName, item.fileSize, item.rawText);
+  const sameFingerprint = Boolean(itemFingerprint && doc.fileFingerprint && itemFingerprint === doc.fileFingerprint);
+  const sameText = Boolean(normalizeText(item.rawText || "") && normalizeText(doc.rawText || "") === normalizeText(item.rawText || ""));
+  const sameName = String(doc.fileName || doc.title || "").trim().toLowerCase() === String(item.fileName || item.title || "").trim().toLowerCase();
+  return sameFingerprint || sameText || sameName;
+}
+
+function removeCompletedPendingUploads(items = []) {
+  const ownerDocs = state.allDocuments
+    .filter((doc) => !doc.deletedAt)
+    .filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey)
+    .filter((doc) => doc.analysis || doc.meetingAnalysis || doc.currentSkillVersion);
+  return items.filter((item) => {
+    if (item.existingDocId || item.overwrite) {
+      return true;
+    }
+    return !ownerDocs.some((doc) => pendingUploadMatchesDoc(item, doc));
+  });
+}
+
+function selectedUploadItems() {
+  return state.uploadItems.filter((item) => item.selected !== false);
+}
+
+function selectedUploadItemsReady() {
+  const selectedItems = selectedUploadItems();
+  return Boolean(selectedItems.length && selectedItems.every(uploadItemReady));
+}
+
+function renderAnalysisLog() {
+  if (!els.analysisLog) {
+    return;
+  }
+  if (!state.analysisLogs.length) {
+    els.analysisLog.innerHTML = "";
+    return;
+  }
+  els.analysisLog.innerHTML = state.analysisLogs
+    .slice(-8)
+    .map((entry) => `<p><span>${escapeHtml(entry.time)}</span>${escapeHtml(entry.message)}</p>`)
+    .join("");
+}
+
+function appendAnalysisLog(message) {
+  const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  state.analysisLogs.push({ time, message });
+  renderAnalysisLog();
+}
+
+function resetAnalysisLog() {
+  state.analysisLogs = [];
+  renderAnalysisLog();
+}
+
+function setAnalysisProgress(step, percent, message) {
+  const safePercent = Math.max(0, Math.min(100, percent));
+  if (els.analysisProgressBar) {
+    els.analysisProgressBar.style.width = `${safePercent}%`;
+  }
+  if (els.analysisProgressPercent) {
+    els.analysisProgressPercent.textContent = `${safePercent}%`;
+  }
+  if (els.parseHint) {
+    els.parseHint.textContent = message || "";
+  }
+  if (message) {
+    appendAnalysisLog(`${step}：${message}`);
+  }
+}
+
+function setUploadLog(step, message) {
+  if (els.analysisProgressBar) {
+    els.analysisProgressBar.style.width = "0%";
+  }
+  if (els.analysisProgressPercent) {
+    els.analysisProgressPercent.textContent = "0%";
+  }
+  if (els.parseHint) {
+    els.parseHint.textContent = message || "";
+  }
+  if (message) {
+    appendAnalysisLog(`${step}：${message}`);
+  }
+}
+
+function setAnalysisIdle(message = "材料已保存，尚未执行分析。") {
+  if (els.analysisProgressBar) {
+    els.analysisProgressBar.style.width = "0%";
+  }
+  if (els.analysisProgressPercent) {
+    els.analysisProgressPercent.textContent = "0%";
+  }
+  if (els.parseHint) {
+    els.parseHint.textContent = message;
+  }
+  resetAnalysisLog();
+}
+
+function setUploadLocked(locked) {
+  state.uploadLocked = locked;
+  if (els.fileInput) {
+    els.fileInput.disabled = locked;
+  }
+  if (els.dropZone) {
+    els.dropZone.classList.toggle("is-disabled", locked);
+  }
+}
+
+function uploadItemReady(item) {
+  return Boolean(item?.materialSourceId && item?.materialTypeId);
+}
+
+function uploadItemSkill(item) {
+  const type = materialTypeByKey(item?.materialTypeId, item?.materialTypeName);
+  return type ? currentTopicSkill(type.id) : null;
+}
+
+function uploadItemSkillDisplay(item) {
+  const skill = uploadItemSkill(item);
+  return skill ? skillDisplayName(skill, "话题拆解 SKILL.md") : "选择材料场景后确定 SKILL";
+}
+
+function uploadItemsReady() {
+  return Boolean(state.draftUploadItems.length && state.draftUploadItems.every(uploadItemReady));
+}
+
+function uploadSelectionSummary() {
+  const selectedCount = selectedUploadItems().length;
+  if (!state.uploadItems.length) {
+    return "";
+  }
+  return `已选中 ${selectedCount} 份材料，共 ${state.uploadItems.length} 份。`;
+}
+
+function draftUploadSummary() {
+  if (!state.draftUploadItems.length) {
+    return "";
+  }
+  return `本次上传 ${state.draftUploadItems.length} 份材料。请完善资料来源和材料场景后保存。`;
+}
+
+function renderUploadMaterialList() {
+  if (!els.uploadMaterialList) {
+    return;
+  }
+  if (!state.draftUploadItems.length) {
+    els.uploadMaterialList.innerHTML = `<p class="empty-state compact">上传材料后，这里会出现本次待保存的材料清单。保存后才会进入下方“已保存待分析材料”。</p>`;
+    updateUploadButtons();
+    renderPendingUploadMaterialList();
+    return;
+  }
+  const sourceOptions = [`<option value="">选择资料来源</option>`]
+    .concat(state.materialSources.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  const typeOptions = [`<option value="">选择材料场景</option>`]
+    .concat(state.materialTypes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  els.uploadMaterialList.innerHTML = `
+    <div class="upload-selection-summary">${escapeHtml(draftUploadSummary())}</div>
+    ${state.draftUploadItems.map((item, index) => {
+      const duplicateDoc = findDuplicateDocument(item);
+      if (duplicateDoc && !item.existingDocId) {
+        item.existingDocId = duplicateDoc.id;
+        item.existingDocTitle = duplicateDoc.title;
+      }
+      const duplicateText = item.existingDocId ? `已上传过：${item.existingDocTitle || item.fileName}` : "";
+      return `
+      <article class="upload-material-item${item.existingDocId ? " is-duplicate" : ""}">
+        <span class="upload-check">待保存</span>
+        <div class="upload-material-main">
+          <strong>${escapeHtml(item.title || item.fileName)}</strong>
+          <small>${escapeHtml(item.fileName)} · ${escapeHtml(formatFileSize(item.fileSize || 0))} · ${escapeHtml(String(item.wordCount || 0))} 字</small>
+          ${duplicateText ? `<label class="duplicate-warning"><input type="checkbox" data-upload-overwrite="${index}" ${item.overwrite ? "checked" : ""} ${state.isAnalyzing ? "disabled" : ""} />${escapeHtml(duplicateText)}，覆盖并重新生成话题</label>` : ""}
+        </div>
+        <select class="text-input" data-upload-source="${index}" ${state.isAnalyzing ? "disabled" : ""}>${sourceOptions}</select>
+        <select class="text-input" data-upload-type="${index}" ${state.isAnalyzing ? "disabled" : ""}>${typeOptions}</select>
+        <span class="upload-item-state" data-ready="${uploadItemReady(item) ? "true" : "false"}">${uploadItemReady(item) ? "待保存" : "待完善"}</span>
+        <button class="upload-delete-btn" data-upload-delete="${index}" type="button" ${state.isAnalyzing ? "disabled" : ""}>删除</button>
+      </article>`;
+    }).join("")}
+  `;
+  els.uploadMaterialList.querySelectorAll("[data-upload-overwrite]").forEach((checkbox) => {
+    const item = state.draftUploadItems[Number(checkbox.dataset.uploadOverwrite)];
+    checkbox.addEventListener("change", async () => {
+      item.overwrite = checkbox.checked;
+      state.uploadAnalysisCompleted = false;
+      renderUploadMaterialList();
+    });
+  });
+  els.uploadMaterialList.querySelectorAll("[data-upload-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.uploadDelete);
+      state.draftUploadItems.splice(index, 1);
+      state.uploadBatchSaved = false;
+      state.uploadAnalysisCompleted = false;
+      state.rawText = state.draftUploadItems.map((item) => `【${item.title}】\n${item.rawText}`).join("\n\n");
+      if (els.sourceText) {
+        els.sourceText.value = state.rawText;
+      }
+      renderUploadMaterialList();
+      setAnalysisIdle(state.draftUploadItems.length ? "本次上传清单已更新，请保存后再执行分析。" : "等待上传材料。");
+    });
+  });
+  els.uploadMaterialList.querySelectorAll("[data-upload-source]").forEach((select) => {
+    const item = state.draftUploadItems[Number(select.dataset.uploadSource)];
+    select.value = item?.materialSourceId || "";
+    select.addEventListener("change", async () => {
+      const source = materialSourceById(select.value);
+      item.materialSourceId = source?.id || "";
+      item.materialSourceName = source?.name || "";
+      state.uploadBatchSaved = false;
+      state.uploadAnalysisCompleted = false;
+      renderUploadMaterialList();
+    });
+  });
+  els.uploadMaterialList.querySelectorAll("[data-upload-type]").forEach((select) => {
+    const item = state.draftUploadItems[Number(select.dataset.uploadType)];
+    select.value = item?.materialTypeId || "";
+    select.addEventListener("change", async () => {
+      const type = materialTypeById(select.value);
+      item.materialTypeId = type?.id || "";
+      item.materialTypeName = type?.name || "";
+      state.uploadBatchSaved = false;
+      state.uploadAnalysisCompleted = false;
+      renderUploadMaterialList();
+    });
+  });
+  updateUploadButtons();
+  renderPendingUploadMaterialList();
+}
+
+function renderPendingUploadMaterialList() {
+  if (!els.pendingUploadMaterialList) {
+    return;
+  }
+  if (!state.uploadItems.length) {
+    els.pendingUploadMaterialList.innerHTML = `<p class="empty-state compact">暂无已保存待分析材料。保存上方材料后，会在这里勾选并执行分析。</p>`;
+    updateUploadButtons();
+    return;
+  }
+  els.pendingUploadMaterialList.innerHTML = `
+    <div class="upload-selection-summary">已保存待分析材料：${escapeHtml(uploadSelectionSummary())}</div>
+    ${state.uploadItems.map((item, index) => {
+      const duplicateText = item.existingDocId ? `已上传过：${item.existingDocTitle || item.fileName}` : "";
+      const skillText = uploadItemSkillDisplay(item);
+      return `
+        <article class="upload-material-item pending-upload-item${item.existingDocId ? " is-duplicate" : ""}">
+          <label class="upload-check">
+            <input type="checkbox" data-pending-selected="${index}" ${item.selected === false ? "" : "checked"} ${state.isAnalyzing ? "disabled" : ""} />
+            <span>分析</span>
+          </label>
+          <div class="upload-material-main">
+            <strong>${escapeHtml(item.title || item.fileName)}</strong>
+            <small>${escapeHtml(item.fileName)} · ${escapeHtml(formatFileSize(item.fileSize || 0))} · ${escapeHtml(String(item.wordCount || 0))} 字</small>
+            <small class="upload-skill-line">执行 SKILL：${escapeHtml(skillText)}</small>
+            ${duplicateText ? `<label class="duplicate-warning"><input type="checkbox" data-pending-overwrite="${index}" ${item.overwrite ? "checked" : ""} ${state.isAnalyzing ? "disabled" : ""} />${escapeHtml(duplicateText)}，覆盖并重新生成话题</label>` : ""}
+          </div>
+          <span class="pending-meta">${escapeHtml(materialSourceByKey(item.materialSourceId, item.materialSourceName)?.name || "未设置来源")}</span>
+          <span class="pending-meta">${escapeHtml(materialTypeByKey(item.materialTypeId, item.materialTypeName)?.name || "未设置类型")}</span>
+          <span class="upload-item-state" data-ready="${uploadItemReady(item) ? "true" : "false"}">待分析</span>
+          <button class="upload-delete-btn" data-pending-delete="${index}" type="button" ${state.isAnalyzing ? "disabled" : ""}>删除</button>
+        </article>
+      `;
+    }).join("")}
+  `;
+  els.pendingUploadMaterialList.querySelectorAll("[data-pending-selected]").forEach((checkbox) => {
+    const item = state.uploadItems[Number(checkbox.dataset.pendingSelected)];
+    checkbox.addEventListener("change", async () => {
+      item.selected = checkbox.checked;
+      state.uploadAnalysisCompleted = false;
+      renderPendingUploadMaterialList();
+      await persistPendingUploads();
+    });
+  });
+  els.pendingUploadMaterialList.querySelectorAll("[data-pending-overwrite]").forEach((checkbox) => {
+    const item = state.uploadItems[Number(checkbox.dataset.pendingOverwrite)];
+    checkbox.addEventListener("change", async () => {
+      item.overwrite = checkbox.checked;
+      state.uploadAnalysisCompleted = false;
+      renderPendingUploadMaterialList();
+      await persistPendingUploads();
+    });
+  });
+  els.pendingUploadMaterialList.querySelectorAll("[data-pending-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.pendingDelete);
+      state.uploadItems.splice(index, 1);
+      state.uploadBatchSaved = Boolean(state.uploadItems.length);
+      state.uploadAnalysisCompleted = false;
+      state.rawText = state.draftUploadItems.map((item) => `【${item.title}】\n${item.rawText}`).join("\n\n");
+      renderPendingUploadMaterialList();
+      await persistPendingUploads();
+      setAnalysisIdle(state.uploadItems.length ? "已保存待分析材料已更新，请勾选后执行分析。" : "暂无已保存待分析材料。");
+    });
+  });
+  updateUploadButtons();
+}
+
+function updateUploadButtons() {
+  if (els.saveUploadBtn) {
+    els.saveUploadBtn.disabled = state.isAnalyzing || !uploadItemsReady() || state.uploadAnalysisCompleted;
+  }
+  if (els.analyzeBtn) {
+    els.analyzeBtn.disabled = state.isAnalyzing || Boolean(state.draftUploadItems.length) || !selectedUploadItemsReady() || state.uploadAnalysisCompleted;
+  }
+  if (els.clearBtn) {
+    els.clearBtn.disabled = state.isAnalyzing || !state.draftUploadItems.length;
+  }
+}
+
+function confirmAction({ title = "请确认操作", message = "确定继续吗？", confirmText = "确认", cancelText = "取消", tone = "default" } = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle">
+        <h3 id="confirmDialogTitle"></h3>
+        <p></p>
+        <div class="confirm-actions">
+          <button class="confirm-cancel" type="button"></button>
+          <button class="primary confirm-submit" type="button" data-tone="${escapeHtml(tone)}"></button>
+        </div>
+      </section>
+    `;
+    const titleNode = overlay.querySelector("h3");
+    const messageNode = overlay.querySelector("p");
+    const cancelButton = overlay.querySelector(".confirm-cancel");
+    const confirmButton = overlay.querySelector(".confirm-submit");
+    titleNode.textContent = title;
+    messageNode.textContent = message;
+    cancelButton.textContent = cancelText;
+    confirmButton.textContent = confirmText;
+    const close = (result) => {
+      overlay.remove();
+      resolve(result);
+    };
+    cancelButton.addEventListener("click", () => close(false));
+    confirmButton.addEventListener("click", () => close(true));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        close(false);
+      }
+    });
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        close(false);
+      }
+    });
+    document.body.appendChild(overlay);
+    confirmButton.focus();
+  });
+}
+
+function confirmAnalysisLeave() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="analysisLeaveTitle">
+        <h3 id="analysisLeaveTitle">确定要离开执行分析吗？</h3>
+        <p>当前大模型还在处理材料。你可以停止本次分析，也可以先跳转页面，分析会在后台继续执行。</p>
+        <div class="confirm-actions">
+          <button class="confirm-submit" type="button" data-action="stop" data-tone="danger">停止执行分析</button>
+          <button class="primary confirm-submit" type="button" data-action="background">仅跳转，后台继续执行分析</button>
+        </div>
+      </section>
+    `;
+    overlay.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.action;
+        overlay.remove();
+        resolve(action);
+      });
+    });
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-action="background"]')?.focus();
+  });
+}
+
+function confirmSkillBatchLeave() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="skillBatchLeaveTitle">
+        <h3 id="skillBatchLeaveTitle">确定要离开批量刷新吗？</h3>
+        <p>当前正在按最新 SKILL 刷新材料。你可以放弃执行，也可以关闭弹窗，后台继续执行。</p>
+        <div class="confirm-actions">
+          <button class="confirm-submit" type="button" data-action="stop" data-tone="danger">放弃执行</button>
+          <button class="primary confirm-submit" type="button" data-action="background">仅跳转后台执行</button>
+        </div>
+      </section>
+    `;
+    overlay.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.action;
+        overlay.remove();
+        resolve(action);
+      });
+    });
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-action="background"]')?.focus();
+  });
+}
+
+async function guardAnalysisNavigation(callback) {
+  if (!state.isAnalyzing || state.allowAnalysisBackground) {
+    callback();
+    return;
+  }
+  const action = state.skillBatchRefresh.active ? await confirmSkillBatchLeave() : await confirmAnalysisLeave();
+  if (action === "stop") {
+    state.analysisAbortController?.abort();
+    if (state.skillBatchRefresh.active) {
+      state.skillBatchRefresh.active = false;
+      appendSkillBatchLog("用户放弃了本次批量刷新。");
+    }
+    state.isAnalyzing = false;
+    state.allowAnalysisBackground = false;
+    sessionStorage.removeItem(ANALYSIS_RUNNING_KEY);
+    setUploadLocked(false);
+    setAnalysisProgress("已停止", 0, "已停止本次执行分析。");
+    updateUploadButtons();
+    callback();
+  }
+  if (action === "background") {
+    state.allowAnalysisBackground = true;
+    if (state.skillBatchRefresh.active) {
+      state.skillBatchRefresh.background = true;
+      appendSkillBatchLog("已切换为后台执行，可先浏览其他页面。");
+    }
+    appendAnalysisLog("已切换为后台继续执行，可以先浏览其他页面。");
+    callback();
+  }
+}
+
+function readDeepSeekSettingsFromConfig() {
+  if (!els.configPage) {
+    return readDeepSeekSettings();
+  }
+  return {
+    provider: els.configPage.querySelector("#deepseekProvider")?.value || "deepseek",
+    apiKey: els.configPage.querySelector("#deepseekApiKey")?.value?.trim() || "",
+    baseUrl: els.configPage.querySelector("#deepseekBaseUrl")?.value?.trim() || "",
+    model: els.configPage.querySelector("#deepseekModel")?.value?.trim() || "",
+    thinking: els.configPage.querySelector("#deepseekThinking")?.value || "enabled",
+    reasoningEffort: els.configPage.querySelector("#deepseekReasoningEffort")?.value || "high",
+  };
+}
+
+function deepSeekSettingsSignature(settings) {
+  const data = {
+    provider: settings.provider || "",
+    apiKey: settings.apiKey || "",
+    baseUrl: settings.baseUrl || "",
+    model: settings.model || "",
+    thinking: settings.thinking || "",
+    reasoningEffort: settings.reasoningEffort || "",
+  };
+  return JSON.stringify(data);
+}
+
+function deepSeekConfigComplete(settings = readDeepSeekSettingsFromConfig()) {
+  return Boolean(settings.provider && settings.apiKey && settings.baseUrl && settings.model);
+}
+
+function syncDeepSeekConfigButtons(messageText = "") {
+  if (!els.configPage) {
+    return;
+  }
+  const settings = readDeepSeekSettingsFromConfig();
+  const complete = deepSeekConfigComplete(settings);
+  const signature = deepSeekSettingsSignature(settings);
+  const tested = complete && state.deepseekTestSignature === signature;
+  const testButton = els.configPage.querySelector("#testDeepseekBtn");
+  const saveButton = els.configPage.querySelector("#saveDeepseekSettingsBtn");
+  const message = els.configPage.querySelector("#deepseekMessage");
+  if (testButton) {
+    testButton.disabled = !complete;
+  }
+  if (saveButton) {
+    saveButton.disabled = !tested;
+  }
+  if (message && messageText) {
+    message.textContent = messageText;
+    message.dataset.tone = complete ? "info" : "error";
+  }
+}
+
+function applyTheme(themeId) {
+  const theme = THEMES.find((item) => item.id === themeId) || THEMES[0];
+  const root = document.documentElement;
+  root.style.setProperty("--ink", theme.ink);
+  root.style.setProperty("--teal", theme.primary);
+  root.style.setProperty("--coral", theme.accent);
+  root.style.setProperty("--soft", theme.soft);
+  root.style.setProperty("--page-bg", theme.bg);
+  root.style.setProperty("--page-paper", "#ffffff");
+  root.style.setProperty("--sidebar-bg", "color-mix(in srgb, var(--page-bg) 44%, #fff)");
+  root.style.setProperty("--sidebar-head", theme.soft);
+}
+
+function renderThemeGrid() {
+  const current = selectedTheme().id;
+  const html = THEMES.map(
+    (theme) => `
+      <button class="theme-option${theme.id === current ? " is-active" : ""}" type="button" data-theme-id="${theme.id}">
+        <span class="theme-swatch" style="background:linear-gradient(135deg, ${theme.primary} 0 58%, ${theme.accent} 58% 100%);border-color:${theme.soft}"></span>
+        <strong>${escapeHtml(theme.name)}</strong>
+        <small>${escapeHtml(theme.scope)}</small>
+      </button>
+    `,
+  ).join("");
+  if (els.themeGrid) {
+    els.themeGrid.innerHTML = html;
+    els.themeGrid.querySelectorAll("[data-theme-id]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const themeId = button.dataset.themeId;
+        const updated = { ...state.currentUser, theme: themeId };
+        await putUser(updated);
+        state.currentUser = updated;
+        applyTheme(themeId);
+        renderConfigPage();
+        renderThemeGrid();
+      });
+    });
+  }
+  if (els.configPage) {
+    const themeGrid = els.configPage.querySelector("#configThemeGrid");
+    if (themeGrid) {
+      themeGrid.innerHTML = html;
+      themeGrid.querySelectorAll("[data-theme-id]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const themeId = button.dataset.themeId;
+          const updated = { ...state.currentUser, theme: themeId };
+          await putUser(updated);
+          state.currentUser = updated;
+          applyTheme(themeId);
+          renderConfigPage();
+          renderThemeGrid();
+        });
+      });
+    }
+  }
+}
+
+async function logEvent(type, detail = {}) {
+  if (!state.currentUser && !detail.emailKey) {
+    return;
+  }
+  const event = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    email: detail.email || state.currentUser?.email || "",
+    emailKey: detail.emailKey || state.currentUser?.emailKey || "",
+    detail,
+    createdAt: new Date().toISOString(),
+  };
+  await withStore(EVENT_STORE, "readwrite", (store) => store.put(event));
+}
+
+function showAuthMessage(message, tone = "info") {
+  els.authMessage.textContent = message;
+  els.authMessage.dataset.tone = tone;
+}
+
+function setAuthTab(name) {
+  els.authTabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.authTab === name));
+  document.querySelectorAll(".auth-form").forEach((form) => {
+    form.classList.toggle("is-active", form.id === `${name}Form`);
+  });
+  showAuthMessage("");
+}
+
+async function registerUser(email) {
+  const normalized = normalizeEmail(email);
+  if (!isFanruanEmail(normalized)) {
+    showAuthMessage("邮箱后缀必须是 @fanruan.com。", "error");
+    return;
+  }
+  const key = emailKey(normalized);
+  const existing = await getUser(normalized);
+  if (existing) {
+    showAuthMessage("该邮箱已经登记过，请联系 Simon.Lv@fanruan.com。", "error");
+    return;
+  }
+  const now = new Date().toISOString();
+  const user = {
+    email: normalized,
+    emailKey: key,
+    role: "user",
+    status: "pending",
+    passwordHash: "",
+    salt: "",
+    createdAt: now,
+    registeredAt: now,
+    approvedAt: "",
+    lastLoginAt: "",
+    loginCount: 0,
+    visitCount: 0,
+    passwordChangedAt: "",
+    pendingReset: false,
+    resetRequestedAt: "",
+    initialPasswordGeneratedAt: "",
+  };
+  await putUser(user);
+  await logEvent("register", { email: user.email, emailKey: user.emailKey });
+  await loadUsers();
+  els.registerEmail.value = "";
+  showAuthMessage("您已经注册成功，请联系 Simon.Lv@fanruan.com 分配初始密码。", "success");
+}
+
+async function login(email, password) {
+  const user = await getUser(email);
+  if (!user) {
+    showAuthMessage("账号不存在，请先申请试用。", "error");
+    return;
+  }
+  if (user.status !== "active") {
+    showAuthMessage("账号尚未开通，请联系 Simon.Lv@fanruan.com 分配初始密码。", "error");
+    return;
+  }
+  const ok = await verifyPassword(password, user);
+  if (!ok) {
+    showAuthMessage("邮箱或密码不正确。", "error");
+    return;
+  }
+  const now = new Date().toISOString();
+  const updated = {
+    ...user,
+    lastLoginAt: now,
+    loginCount: (user.loginCount || 0) + 1,
+    visitCount: (user.visitCount || 0) + 1,
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+  state.deepseekTestSignature = "";
+  saveSession(updated.emailKey, selectedRememberDuration());
+  await logEvent("login");
+  await enterApp();
+}
+
+async function restoreSession() {
+  await ensureAdminUser();
+  const session = readSession();
+  if (!session?.emailKey) {
+    renderAuthGate();
+    return;
+  }
+  if (isSessionExpired(session)) {
+    clearSession();
+    renderAuthGate();
+    showAuthMessage("登录状态已过期，请重新登录。", "info");
+    return;
+  }
+  const user = await getUser(session.emailKey);
+  if (!user || user.status !== "active") {
+    clearSession();
+    renderAuthGate();
+    return;
+  }
+  const updated = { ...user, visitCount: (user.visitCount || 0) + 1 };
+  await putUser(updated);
+  state.currentUser = updated;
+  state.deepseekTestSignature = "";
+  await logEvent("visit");
+  await enterApp();
+}
+
+function renderAuthGate() {
+  els.authScreen.classList.remove("is-hidden");
+  document.querySelector(".app-shell").classList.add("is-locked");
+}
+
+async function enterApp() {
+  els.authScreen.classList.add("is-hidden");
+  document.querySelector(".app-shell").classList.remove("is-locked");
+  els.userBadge.textContent = state.currentUser.email;
+  document.querySelectorAll(".admin-only").forEach((node) => {
+    node.hidden = !isAdmin();
+  });
+  state.activeOwner = isAdmin() ? "all" : state.currentUser.emailKey;
+  applyTheme(state.currentUser.theme || THEMES[0].id);
+  applyFontSettings();
+  loadMaterialTaxonomy();
+  loadTopicSkills();
+  renderThemeGrid();
+  renderConfigPage();
+  renderMaterialManagePage();
+  renderTopicSkillPage();
+  renderVersionPage();
+  await loadUsers();
+  renderOwnerFilter();
+  await loadDocCategories();
+  await loadDocuments();
+  await loadPendingUploads();
+  renderAdminPage();
+  renderRecyclePage();
+  switchModule("learning");
+  switchStudyView("materialOverview");
+  const defaultMaterialTab = document.querySelector('.module-tab[data-study-view="materialOverview"]');
+  defaultMaterialTab?.classList.add("is-active");
+  renderMaterialOverviewPage();
+  if (sessionStorage.getItem(ANALYSIS_COMPLETED_REDIRECT_KEY) || sessionStorage.getItem(ANALYSIS_RUNNING_KEY)) {
+    sessionStorage.removeItem(ANALYSIS_COMPLETED_REDIRECT_KEY);
+    sessionStorage.removeItem(ANALYSIS_RUNNING_KEY);
+    switchModule("learning");
+    switchStudyView("topicsHome");
+    renderTopicHome();
+  }
+}
+
+async function requestPasswordReset(email) {
+  const user = await getUser(email);
+  if (!user || !isFanruanEmail(email)) {
+    showAuthMessage("如果该邮箱已登记，找回申请会进入管理员后台。", "success");
+    return;
+  }
+  const updated = {
+    ...user,
+    pendingReset: true,
+    resetRequestedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  await logEvent("reset_request", { email: user.email, emailKey: user.emailKey });
+  await loadUsers();
+  showAuthMessage("找回申请已提交，请联系 Simon.Lv@fanruan.com 获取重置密码。", "success");
+}
+
+async function activateUser(emailKeyValue, reason = "initial") {
+  if (!isAdmin()) {
+    return;
+  }
+  const user = await getUser(emailKeyValue);
+  if (!user) {
+    return;
+  }
+  const password = randomPassword();
+  const validation = validatePassword(password);
+  if (!validation.ok) {
+    throw new Error(validation.message);
+  }
+  const hashed = await hashPassword(password);
+  const now = new Date().toISOString();
+  const updated = {
+    ...user,
+    status: "active",
+    passwordHash: hashed.hash,
+    salt: hashed.salt,
+    approvedAt: user.approvedAt || now,
+    pendingReset: false,
+    resetRequestedAt: reason === "reset" ? user.resetRequestedAt : "",
+    initialPasswordGeneratedAt: now,
+  };
+  await putUser(updated);
+  await logEvent(reason === "reset" ? "reset_password_generated" : "initial_password_generated", {
+    email: user.email,
+    emailKey: user.emailKey,
+  });
+  await loadUsers();
+  renderAdminPage(password, user.email);
+}
+
+async function changeOwnPassword() {
+  const root = els.configPage || document;
+  const message = root.querySelector("#accountMessage");
+  const oldPassword = root.querySelector("#oldPassword")?.value || "";
+  const newPassword = root.querySelector("#newPassword")?.value || "";
+  const confirmPassword = root.querySelector("#confirmPassword")?.value || "";
+  if (message) {
+    message.textContent = "";
+  }
+  if (newPassword !== confirmPassword) {
+    if (message) {
+      message.textContent = "两次输入的新密码不一致。";
+    }
+    return;
+  }
+  const validation = validatePassword(newPassword);
+  if (!validation.ok) {
+    if (message) {
+      message.textContent = validation.message;
+    }
+    return;
+  }
+  const latest = await getUser(state.currentUser.emailKey);
+  const ok = await verifyPassword(oldPassword, latest);
+  if (!ok) {
+    if (message) {
+      message.textContent = "当前密码不正确。";
+    }
+    return;
+  }
+  const hashed = await hashPassword(newPassword);
+  const updated = {
+    ...latest,
+    passwordHash: hashed.hash,
+    salt: hashed.salt,
+    passwordChangedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+  await logEvent("change_password");
+  const oldInput = root.querySelector("#oldPassword");
+  const newInput = root.querySelector("#newPassword");
+  const confirmInput = root.querySelector("#confirmPassword");
+  if (oldInput) oldInput.value = "";
+  if (newInput) newInput.value = "";
+  if (confirmInput) confirmInput.value = "";
+  if (message) {
+    message.textContent = "密码已修改。";
+  }
+}
+
+function normalizeText(text) {
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function formatOriginalParagraphs(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return [];
+  }
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\n+/g, " ").trim())
+    .filter(Boolean);
+  if (paragraphs.length > 1) {
+    return paragraphs;
+  }
+  return splitSentences(normalized)
+    .reduce((groups, sentence, index) => {
+      const groupIndex = Math.floor(index / 3);
+      groups[groupIndex] = groups[groupIndex] ? `${groups[groupIndex]}${sentence}` : sentence;
+      return groups;
+    }, [])
+    .filter(Boolean);
+}
+
+function renderOriginalText(text = state.rawText) {
+  if (!els.originalTextBody) {
+    return;
+  }
+  const paragraphs = formatOriginalParagraphs(text);
+  if (!paragraphs.length) {
+    els.originalTextBody.innerHTML = `<p class="empty-state compact">上传或打开一篇文档后，这里会显示整理好的原文段落。</p>`;
+    return;
+  }
+  els.originalTextBody.innerHTML = paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+}
+
+function splitSentences(text) {
+  const source = normalizeText(text).replace(/\n+/g, "。");
+  const matches = source.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [];
+  return matches
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 12 && sentence.length <= 180);
+}
+
+function countKeywordHits(text, keywords) {
+  return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
+}
+
+function classifySentence(sentence) {
+  const ranked = categoryDefs
+    .map((category) => ({
+      category,
+      score: countKeywordHits(sentence, category.keywords),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked[0].score > 0) {
+    return ranked[0];
+  }
+
+  return {
+    category: categoryDefs.find((category) => category.id === "leadership"),
+    score: 0.5,
+  };
+}
+
+function sentenceWeight(sentence) {
+  const signalWords = ["必须", "核心", "关键", "本质", "真正", "不是", "而是", "只有", "越", "首先", "最后", "最重要"];
+  const signalScore = countKeywordHits(sentence, signalWords) * 2;
+  const lengthScore = Math.min(sentence.length / 42, 3);
+  return signalScore + lengthScore;
+}
+
+function pickTopSentences(sentences, limit) {
+  return [...sentences]
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, limit)
+    .map((item) => item.text);
+}
+
+function buildOverview(grouped, sentences, text) {
+  const topCategories = Object.values(grouped)
+    .filter((group) => group.items.length)
+    .sort((a, b) => b.items.length - a.items.length)
+    .slice(0, 4)
+    .map((group) => group.category.name);
+
+  const core = pickTopSentences(
+    sentences.map((text) => ({ text, weight: sentenceWeight(text) })),
+    1,
+  )[0];
+
+  const oneLine = core
+    ? `这篇讲话的核心，是围绕“${topCategories.join("、") || "经营管理"}”建立一套从判断到行动、从实践到反馈的组织学习机制。`
+    : "请上传或粘贴 CEO 讲话原文，系统会生成核心思想。";
+
+  const logicLine = topCategories.length
+    ? `识别出的主线是：先定义核心命题，再把观点分入${topCategories.join("、")}等维度，最后反向拆成可学习的问题文章。`
+    : "系统会自动识别战略、数字化、AI、组织、流程、数据、激励、文化、领导力等维度。";
+
+  return {
+    oneLine,
+    logicLine,
+    wordCount: text.replace(/\s/g, "").length,
+  };
+}
+
+function buildTopics(grouped) {
+  const topics = Object.values(grouped)
+    .filter((group) => group.items.length)
+    .sort((a, b) => b.items.length - a.items.length)
+    .slice(0, 9)
+    .map((group, index) => {
+      const evidence = pickTopSentences(group.items, 4);
+      const question = refineQuestion(group.category, evidence);
+      const difficulty = Math.min(5, Math.max(1, Math.ceil(group.items.length / 2)));
+
+      return {
+        index: index + 1,
+        title: question.replace(/[？?]$/, ""),
+        sourceSummary: buildTopicSourceSummary(evidence, group.category),
+        category: group.category,
+        categoryName: group.category.name,
+        problemTypes: [group.category.name],
+        difficulty,
+        evidence,
+        problemEssence: group.category.essence,
+        surfacePhenomenon: buildSurfacePhenomenon(evidence, group.category),
+        deepNature: buildDeepNature(group.category, evidence),
+        ceoSolution: buildCeoSolution(evidence, group.category),
+        theoryAnchors: buildTheoryAnchors(group.category, evidence),
+        caseComparison: buildCaseComparison(group.category),
+        moreSolutions: buildMoreSolutions(group.category),
+        transferableInsights: buildTransferableInsights(group.category, evidence),
+      };
+    });
+
+  return topics;
+}
+
+function buildTopicSourceSummary(evidence, category) {
+  if (!evidence.length) {
+    return `来自原文中关于${category.name}的相关表述。`;
+  }
+  const lead = evidence[0].replace(/[。；;]$/, "");
+  return `来自原文：${lead.length > 42 ? `${lead.slice(0, 42)}...` : lead}`;
+}
+
+function buildSurfacePhenomenon(evidence, category) {
+  if (!evidence.length) {
+    return `原文中关于${category.name}的直接表述不够集中，但整体可以看出作者在强调这一领域的管理矛盾。`;
+  }
+  const summary = evidence.slice(0, 2).map((sentence) => sentence.replace(/[。；;]$/, "")).join("；");
+  return `表面上，CEO 在讨论${category.name}问题时，直接给出的动作和判断是：${summary}。`;
+}
+
+function buildDeepNature(category, evidence) {
+  const joined = evidence.join(" ");
+  const hasData = /数据|指标|报表|看板|事实/.test(joined);
+  const hasPractice = /一线|现场|客户|实践|复盘|共创/.test(joined);
+  const hasBelief = /相信|信任|认知|习惯|经验/.test(joined);
+
+  const psychology = {
+    title: "心理学维度",
+    explanation: hasBelief
+      ? "核心不是不理解方法，而是认知和信任没有建立起来。人对抽象原则的接受，往往要通过具体体验来完成。"
+      : "核心不是表面动作本身，而是人的感受、习惯和判断方式没有被改变，抽象方法很难直接被接受。",
+    case: "可以通过让关键角色亲自体验一次问题被解决的过程，来把抽象认知变成具体信任。",
+  };
+
+  const management = {
+    title: "管理学维度",
+    explanation: hasData || hasPractice
+      ? "核心是信息、权力和流程之间的协同关系。只有让信息进入真实流动，组织才会逼近事实。"
+      : "核心是组织内部的机制是否真的让问题被看见、被讨论、被修正，而不是只停留在汇报层。",
+    case: "可以通过建立固定看板、共创机制或例会节奏，让信息从一线回到决策层，再从决策层回到一线。",
+  };
+
+  const mao = {
+    title: "毛泽东认识论维度",
+    explanation: "核心是认识从实践中来，也必须回到实践中去检验。没有调查，就很难形成真正的发言权。",
+    case: "可以把一次真实业务问题当成调查场景，让组织在实践、认识、再实践、再认识中完成升级。",
+  };
+
+  return [psychology, management, mao];
+}
+
+function buildCeoSolution(evidence, category) {
+  const joined = evidence.join(" ");
+  const coreJudgment = evidence.length
+    ? `核心判断是：围绕${category.name}，不能只停留在抽象倡导，必须把方法落到真实场景里。`
+    : `核心判断是：${category.name}问题不能靠口号解决，而要靠真实管理动作推动。`;
+  const verificationMethods = [
+    "让关键角色亲自看到一次数据、流程或组织动作改善后的结果。",
+    "用一周到几周的持续观察，验证方法是否真的提升了判断质量。",
+    "把经验最强的人和一线最真实的场景放在一起，检验是否能形成共识。",
+  ];
+  const keyActions = [
+    /数据|指标|报表|看板/.test(joined) ? "建立老板或负责人固定查看的核心指标视图。" : "把判断拆成可讨论的核心问题，而不是停留在抽象口号。",
+    /一线|现场|客户|共创/.test(joined) ? "让一线参与方案共创，减少总部单向设计。" : "把问题转成可执行动作，并让执行者参与设计。",
+    "持续复盘，让方法在真实业务中越用越准。",
+  ];
+  return { coreJudgment, verificationMethods, keyActions };
+}
+
+function buildTheoryAnchors(category, evidence) {
+  const joined = evidence.join(" ");
+  const linkedTheoryModel = [
+    "毛泽东《实践论》：认识来源于实践，也要回到实践中检验。",
+    "毛泽东《反对本本主义》：没有调查就没有发言权。",
+    "具身认知理论：抽象概念需要通过具体体验建立理解。",
+    /数据|指标|报表|看板/.test(joined) ? "确认偏误：人会更容易相信熟悉的经验，忽视与经验冲突的数据。" : "组织学习理论：知识要通过反复反馈沉淀为能力。",
+  ];
+  const logicDissection = [
+    `这类${category.name}问题的关键，不是先争论对错，而是先定义真实矛盾。`,
+    "真正有效的解法，通常是把抽象原则翻译成可观察、可执行、可复盘的动作。",
+    "当方法在真实场景中反复成立，认知才会从感性经验跃迁为稳定判断。",
+  ];
+  return { linkedTheoryModel, logicDissection };
+}
+
+function buildCaseComparison(category) {
+  const cases = {
+    strategy: {
+      counterexample: "某企业同时追逐过多赛道，结果资源被摊薄，战略变成了什么都想要。",
+      positiveExample: "另一家公司只选少数高价值赛道，围绕关键客户和能力持续投入，形成了稳定增长。",
+      historicalAnalogy: "就像行军作战时不能四面出击，先明确主攻方向，资源才能集中形成优势。",
+    },
+    digital: {
+      counterexample: "有的组织把数字化做成工具采购，系统很多，但业务动作没有真正改变。",
+      positiveExample: "也有团队先梳理业务流程，再把关键环节在线化，最后让数据真正服务经营复盘。",
+      historicalAnalogy: "像修路一样，不是先买一堆车，而是先把路线和节点打通。",
+    },
+    ai: {
+      counterexample: "把 AI 当成替代所有人的黑箱工具，最后只剩下演示，没有组织能力变化。",
+      positiveExample: "把 AI 放进研究、训练、复盘和知识沉淀后，团队学习速度明显提高。",
+      historicalAnalogy: "像把算盘换成更快的计算器，真正变化的不是工具本身，而是工作方式。",
+    },
+    organization: {
+      counterexample: "总部把规则设计完再往下推，一线觉得不适用，最后执行变形。",
+      positiveExample: "一线参与共创后，规则更贴近现场，执行和责任感都更强。",
+      historicalAnalogy: "像打井，只有真正挖到地下水层，组织才会持续出水。",
+    },
+    process: {
+      counterexample: "流程只存在于文档里，遇到异常就靠负责人临场发挥。",
+      positiveExample: "把关键节点、检查点和异常处理写成 SOP 后，组织开始稳定复制成功。",
+      historicalAnalogy: "像铺轨，只有轨道标准化，列车才能持续稳定前进。",
+    },
+    data: {
+      counterexample: "只看汇总报表，不看结构和场景，结果把增长误读成健康。",
+      positiveExample: "拆开新客、复购、利润、回款之后，真实问题才会浮出来。",
+      historicalAnalogy: "像体检，不能只看体温，必须结合多项指标一起判断。",
+    },
+    incentive: {
+      counterexample: "只考核结果，员工就容易保守，不愿暴露问题。",
+      positiveExample: "把主动发现问题和沉淀方法也纳入奖励后，组织会更愿意进化。",
+      historicalAnalogy: "像种庄稼，不能只收割，还要给土地持续施肥。",
+    },
+    culture: {
+      counterexample: "把价值观挂在墙上，但关键时刻的取舍完全相反。",
+      positiveExample: "在资源分配和关键决策中体现长期价值观，文化才会真正落地。",
+      historicalAnalogy: "像磨刀，文化不是说出来的，而是在反复磨炼中形成的。",
+    },
+    leadership: {
+      counterexample: "领导者只给结论，不拆矛盾，团队只会更焦虑。",
+      positiveExample: "把复杂问题拆成判断、动作和反馈，团队就更容易跟上节奏。",
+      historicalAnalogy: "像指挥一场演练，先明确目标和队形，大家才知道往哪里走。",
+    },
+  };
+  return cases[category.id] || cases.leadership;
+}
+
+function buildMoreSolutions(category) {
+  const solutions = {
+    strategy: [
+      {
+        title: "标杆参访法",
+        steps: ["找一家具备参考意义的企业。", "让老板亲眼看见别人如何做取舍。", "把参访收获转成自己的决策标准。"],
+        applicability: "适合老板对外部学习保持开放时使用。",
+      },
+      {
+        title: "痛点突破法",
+        steps: ["选一个老板最痛的经营问题。", "用数据或机制快速给出答案。", "让他直接感受到新方法的价值。"],
+        applicability: "适合组织有明确痛点、急需突破时使用。",
+      },
+      {
+        title: "驾驶舱法",
+        steps: ["提炼 5 到 8 个核心指标。", "每周固定同步一次。", "把看数据变成决策习惯。"],
+        applicability: "适合需要建立长期数据习惯的团队使用。",
+      },
+    ],
+    digital: [
+      {
+        title: "流程先行法",
+        steps: ["先画流程，再定系统。", "把关键节点在线化。", "让数据自动沉淀到业务中。"],
+        applicability: "适合数字化基础薄弱但流程复杂的组织。",
+      },
+      {
+        title: "试点复制法",
+        steps: ["先选一个高价值场景。", "把成功经验沉淀成模板。", "再复制到更多部门。"],
+        applicability: "适合资源有限、需要快速见效的团队。",
+      },
+      {
+        title: "指标绑定法",
+        steps: ["把每个流程节点绑定指标。", "让系统服务经营复盘。", "持续迭代表单和看板。"],
+        applicability: "适合重视经营透明度的组织。",
+      },
+    ],
+    ai: [
+      {
+        title: "场景嵌入法",
+        steps: ["挑选高频知识场景。", "让 AI 先做整理和初稿。", "由业务负责人完成判断。"],
+        applicability: "适合知识密集型组织。",
+      },
+      {
+        title: "训练闭环法",
+        steps: ["把优秀案例转成题库。", "用 AI 生成练习材料。", "通过训练反馈持续优化。"],
+        applicability: "适合销售、客服、培训等场景。",
+      },
+      {
+        title: "人机协同法",
+        steps: ["明确 AI 能做什么。", "明确人必须判断什么。", "建立生成与审核的分工。"],
+        applicability: "适合对结果质量要求高的场景。",
+      },
+    ],
+    organization: [
+      {
+        title: "一线共创法",
+        steps: ["先收集一线问题。", "再让一线参与方案设计。", "最后小范围试点验证。"],
+        applicability: "适合执行阻力大、总部与一线脱节时使用。",
+      },
+      {
+        title: "规则抽象法",
+        steps: ["总部只抽象规则。", "把资源协调和例外处理留给组织中枢。", "让一线承担执行与反馈。"],
+        applicability: "适合层级较多、协同复杂的组织。",
+      },
+      {
+        title: "复盘推广法",
+        steps: ["试点后做复盘。", "把有效做法沉淀成标准。", "再推广到更大范围。"],
+        applicability: "适合需要持续复制经验的组织。",
+      },
+    ],
+    process: [
+      {
+        title: "五要素拆解法",
+        steps: ["拆成输入、动作、责任人、输出、检查点。", "逐项补齐。", "再验证是否可执行。"],
+        applicability: "适合需要标准化的场景。",
+      },
+      {
+        title: "异常倒逼法",
+        steps: ["收集异常案例。", "反推流程漏洞。", "用异常驱动更新 SOP。"],
+        applicability: "适合经常出现临场救火的团队。",
+      },
+      {
+        title: "节奏固化法",
+        steps: ["把关键复盘固定在周会或月会。", "让流程与节奏绑定。", "形成稳定闭环。"],
+        applicability: "适合项目多、变化快的组织。",
+      },
+    ],
+    data: [
+      {
+        title: "场景复盘法",
+        steps: ["把数据和具体业务场景绑定。", "拆出原因、动作和反馈。", "避免只看数字不看问题。"],
+        applicability: "适合经营管理层使用。",
+      },
+      {
+        title: "领先指标法",
+        steps: ["区分领先指标和滞后指标。", "提前识别趋势变化。", "减少事后才发现问题。"],
+        applicability: "适合增长和经营压力大的团队。",
+      },
+      {
+        title: "老板看板法",
+        steps: ["只保留少量核心指标。", "固定时间查看。", "持续校准口径和数据质量。"],
+        applicability: "适合需要建立高层数据习惯的组织。",
+      },
+    ],
+    incentive: [
+      {
+        title: "行为奖励法",
+        steps: ["把发现问题也纳入奖励。", "把共创和沉淀方法也纳入激励。", "让组织更愿意分享经验。"],
+        applicability: "适合希望鼓励学习型文化的组织。",
+      },
+      {
+        title: "双层激励法",
+        steps: ["个人激励与团队激励并行。", "避免只追个人最优。", "把局部行为导向整体目标。"],
+        applicability: "适合团队协作强的业务。",
+      },
+      {
+        title: "关键行为法",
+        steps: ["识别最关键的管理行为。", "让奖励直接指向这些行为。", "持续校正激励方向。"],
+        applicability: "适合需要改变员工行为模式的团队。",
+      },
+    ],
+    culture: [
+      {
+        title: "场景翻译法",
+        steps: ["把价值观翻译成场景行为。", "在关键决策中验证。", "通过真实案例传播。"],
+        applicability: "适合文化口号较多但落地不足的组织。",
+      },
+      {
+        title: "取舍证明法",
+        steps: ["用资源分配证明价值观。", "让员工看到文化如何影响选择。", "用行为而不是口号定义文化。"],
+        applicability: "适合处于变革期的组织。",
+      },
+      {
+        title: "长期复利法",
+        steps: ["坚持重复关键价值标准。", "让组织在长期中形成一致性。", "把文化变成稳定力量。"],
+        applicability: "适合希望构建长期竞争力的企业。",
+      },
+    ],
+    leadership: [
+      {
+        title: "问题拆解法",
+        steps: ["先定义问题。", "再找主要矛盾。", "最后让团队知道先做什么。"],
+        applicability: "适合复杂决策和变革推进。",
+      },
+      {
+        title: "节奏复盘法",
+        steps: ["建立周度或月度复盘。", "持续修正判断。", "让组织跟随节奏前进。"],
+        applicability: "适合变化快、信息多的组织。",
+      },
+      {
+        title: "行动牵引法",
+        steps: ["用可执行动作替代空泛口号。", "让团队先动起来。", "在行动中修正认知。"],
+        applicability: "适合团队焦虑、认知不统一时使用。",
+      },
+    ],
+  };
+  return solutions[category.id] || solutions.leadership;
+}
+
+function buildTransferableInsights(category, evidence) {
+  const joined = evidence.join(" ");
+  const team = /一线|共创|现场/.test(joined)
+    ? "对团队的启示：不要只等总部给答案，要把一线经验变成组织共识。"
+    : "对团队的启示：不要被抽象道理卡住，要把方法落到真实问题上。";
+  const reader = /数据|指标|报表/.test(joined)
+    ? "对读者的行动建议：下次想推动某个数据时，不要只发报表，而要先想它能解决什么真实痛点。"
+    : "对读者的行动建议：下次遇到类似问题，先问自己这件事的核心矛盾是什么，再决定怎么做。";
+  return { team, reader };
+}
+
+function refineQuestion(category, evidence) {
+  const joined = evidence.join("；");
+  if (category.id === "ai" && /销售|客户|知识|研究|复盘|训练/.test(joined)) {
+    return "AI 如何从工具升级为组织学习速度的放大器？";
+  }
+  if (category.id === "digital" && /数据|流程|在线|系统/.test(joined)) {
+    return "数字化如何把业务经验沉淀为可复用的组织能力？";
+  }
+  if (category.id === "strategy" && /取舍|选择|减法|机会|资源/.test(joined)) {
+    return "战略为什么首先是取舍，而不是把所有机会都抓住？";
+  }
+  if (category.id === "organization" && /一线|共创|现场|总部/.test(joined)) {
+    return "为什么一线共创比总部单向设计更能推动执行？";
+  }
+  if (category.id === "incentive" && /奖励|考核|分配/.test(joined)) {
+    return "为什么奖励机制比单纯考核更能牵引组织行为？";
+  }
+  return category.question;
+}
+
+function buildActualSolution(evidence, category) {
+  if (!evidence.length) {
+    return `讲话中没有足够原文支撑，需要继续补充与${category.name}有关的材料。`;
+  }
+  const restored = evidence.slice(0, 3).map((sentence) => `“${sentence.replace(/[。；;]$/, "")}”`).join("；");
+  return `讲话中的实际做法可以还原为：围绕${category.name}问题，把关键判断落到具体动作上。可直接依据的原文包括：${restored}。`;
+}
+
+function buildLogic(category, evidence) {
+  const hasPractice = /一线|现场|客户|数据|复盘|实践/.test(evidence.join(""));
+  const practiceLine = hasPractice
+    ? "它强调从真实业务现场取得认识，再回到现场检验，符合“实践-认识-再实践”的闭环。"
+    : "它先抓主要矛盾，再把分散观点收束为组织可以执行的判断。";
+  return `${category.logic}${practiceLine}`;
+}
+
+function buildCaseStory(category) {
+  const stories = {
+    strategy: "一家多业务公司曾同时追逐多个热门赛道，销售、研发、交付都被拉扯。后来管理层把行业吸引力、客户付费意愿、内部能力三项放到同一张表里，砍掉低协同项目，把资源集中到两个核心场景。半年后，团队不再争论“要不要做”，而是围绕“怎样做到第一”形成合力。",
+    digital: "某区域团队原本依赖个人经验跟进客户，人员流动后线索大量断层。后来他们把客户分层、跟进记录、复盘结论全部在线化，新人可以直接看到前人的判断和动作，管理者也能发现流程中最容易掉点的位置。",
+    ai: "一个知识密集型团队把 AI 放进研究、培训和复盘环节：先让 AI 整理行业资料，再由业务负责人判断重点，最后把优秀销售对话转成训练题库。AI 没有替代管理者，却把团队学习速度从“靠师傅带”提升为“靠系统持续训练”。",
+    organization: "总部曾制定一套看似完整的流程，但一线认为太慢、太重，执行时大量变形。后来改成让一线先提出高频问题，总部只做规则抽象和资源协调，流程上线后阻力明显下降，因为执行者也是设计者。",
+    process: "一个项目团队过去每次成功都靠负责人临场推进，换人后质量波动很大。后来他们把关键节点、检查清单、异常处理和复盘机制写入 SOP，项目不再依赖单个英雄，而是依赖稳定流程。",
+    data: "管理层看到销售额增长后曾误判业务健康，后来拆开新客、复购、毛利、回款周期才发现增长来自低毛利订单。数据被重新解释后，公司调整了客户选择标准，增长质量才真正改善。",
+    incentive: "一家公司只考核结果，员工倾向于保守完成指标，不愿暴露问题。后来增加“主动发现问题并沉淀方法”的奖励，团队开始把经验写成模板，组织能力反而比单纯追指标提升更快。",
+    culture: "一家企业把“客户第一”写在墙上很多年，但真正改变来自一次资源取舍：公司放弃短期收入更高但损害客户体验的项目，把资源投向长期口碑。那一刻，文化从口号变成了可观察的行为。",
+    leadership: "一次业务转型中，团队对方向有很多焦虑。负责人没有先喊口号，而是把问题拆成客户价值、能力缺口、组织动作和反馈指标四部分，每周复盘一次。复杂问题被讲清楚后，团队才真正开始行动。",
+  };
+  return stories[category.id] || stories.leadership;
+}
+
+function buildBetterOptions(category) {
+  const shared = {
+    strategy: ["建立“机会评分表”：用客户价值、利润质量、能力匹配、战略协同四项做取舍。", "设置季度战略复盘：只允许新增少量关键战役，避免资源再次被摊薄。"],
+    digital: ["先画业务流程图，再决定系统功能，避免数字化变成工具堆砌。", "把每个流程节点绑定数据指标，让系统天然服务于经营复盘。"],
+    ai: ["选择 3 个高频场景做 AI 试点，例如行业研究、客户问答、复盘纪要。", "建立人机协同标准：AI 负责生成初稿和对比，业务负责人负责判断和定稿。"],
+    organization: ["把一线共创做成固定机制：问题征集、方案共创、小范围试点、复盘推广。", "明确总部角色：少做命令发布，多做规则抽象、资源协调和跨团队复制。"],
+    process: ["把流程拆成输入、动作、责任人、输出、检查点五要素。", "用异常案例倒逼流程更新，让 SOP 从静态文档变成活机制。"],
+    data: ["建立“数据-场景-行动”三栏复盘，防止只看指标不看原因。", "区分领先指标和滞后指标，提前发现经营变化。"],
+    incentive: ["把奖励从结果扩展到关键行为，例如发现问题、共创方案、沉淀标准。", "设计团队激励与个人激励的组合，避免局部最优损害整体目标。"],
+    culture: ["把价值观翻译成关键场景中的行为标准。", "用真实取舍案例讲文化，让员工看到文化如何影响资源分配。"],
+    leadership: ["用“问题-矛盾-动作-反馈”四段式沟通复杂决策。", "建立领导者复盘日志，持续校准自己的判断与组织反馈。"],
+  };
+  return shared[category.id] || shared.leadership;
+}
+
+function extractQuotes(sentences) {
+  return sentences
+    .map((text) => ({ text, weight: sentenceWeight(text) + (/[“”]/.test(text) ? 1 : 0) }))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 10)
+    .map((item) => item.text);
+}
+
+function suggestTagsFromAnalysis(analysis) {
+  const categoryTags = analysis.activeCategories
+    .sort((a, b) => b.items.length - a.items.length)
+    .slice(0, 5)
+    .map((group) => group.category.name);
+  const quoteTags = analysis.quotes
+    .join(" ")
+    .match(/AI|数字化|战略|组织|文化|流程|数据|激励|领导力|一线|客户|复盘/g) || [];
+  return [...new Set([...categoryTags, ...quoteTags])].slice(0, 8);
+}
+
+function analyzeText(rawText) {
+  const text = normalizeText(rawText);
+  const sentences = splitSentences(text);
+  const grouped = Object.fromEntries(
+    categoryDefs.map((category) => [category.id, { category, items: [] }]),
+  );
+
+  sentences.forEach((sentence) => {
+    const { category, score } = classifySentence(sentence);
+    grouped[category.id].items.push({
+      text: sentence,
+      weight: sentenceWeight(sentence) + score,
+    });
+  });
+
+  const overview = buildOverview(grouped, sentences, text);
+  const topics = buildTopics(grouped);
+  const quotes = extractQuotes(sentences);
+  const activeCategories = Object.values(grouped).filter((group) => group.items.length);
+  const suggestedTags = suggestTagsFromAnalysis({ activeCategories, quotes });
+
+  return {
+    text,
+    sentences,
+    grouped,
+    overview,
+    topics,
+    quotes,
+    activeCategories,
+    suggestedTags,
+    deepeningModes,
+  };
+}
+
+function renderDeepening(modes = deepeningModes) {
+  if (!els.deepeningBoard) {
+    return;
+  }
+  els.deepeningBoard.innerHTML = "";
+  modes.forEach((mode) => {
+    const card = document.createElement("article");
+    card.className = "deepening-card";
+    const questions = mode.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("");
+    card.innerHTML = `
+      <h3>${escapeHtml(mode.title)}</h3>
+      <p>${escapeHtml(mode.goal)}</p>
+      <ul>${questions}</ul>
+    `;
+    els.deepeningBoard.appendChild(card);
+  });
+}
+
+function buildDeepSeekPrompt(text, skill = currentTopicSkill()) {
+  const categories = categoryDefs.map((item) => item.name).join("、");
+  const targetTypeName = skill?.targetMaterialTypeName || "高层视角";
+  const skillInstruction = skill?.prompt
+    ? `\n\n当前话题 SKILL 版本：${skill.version}｜${skill.summary}\n请优先遵循以下 SKILL 组织规则：\n${skill.prompt}`
+    : "";
+  if (targetTypeName === "会议纪要") {
+    return [
+      {
+        role: "system",
+        content:
+          "你是一个会议纪要分析助手。请严格根据输入原文进行结构化拆解，输出适合前端渲染的JSON，不要输出多余解释。请区分会议纪要分析内容与可提炼话题；如果没有自然的话题，不要强行生成。",
+      },
+      {
+        role: "user",
+        content: `
+请基于下面的会议纪要原文，输出JSON对象，字段结构如下：
+{
+  "overview": {"oneLine": "", "logicLine": "", "wordCount": 0},
+  "meetingAnalysis": {
+    "meetingInfo": {
+      "topic": "",
+      "goal": "",
+      "time": "",
+      "duration": "",
+      "participants": [],
+      "absentees": [],
+      "host": "",
+      "recorder": ""
+    },
+    "decisions": [{"index": 1, "issue": "", "decision": "", "reason": ""}],
+    "actionItems": [{"index": 1, "action": "", "owner": "", "deadline": "", "source": ""}],
+    "discussionSummary": [{"issue": "", "background": "", "keyViews": [], "divergences": "", "conclusion": ""}],
+    "collaboration": {"mood": "", "attitudeDistribution": [], "conflictPoints": [], "falseConsensus": []},
+    "risksAndDependencies": {"explicitRisks": [], "implicitRisks": [], "dependencies": [], "missingInfo": []},
+    "pendingQuestions": [{"question": "", "status": "", "followUp": ""}],
+    "topicExtractionNote": ""
+  },
+  "categories": [{"name": "", "colorHint": "", "sentences": []}],
+  "topics": [{
+    "index": 1,
+    "title": "",
+    "sourceSummary": "",
+    "categoryName": "",
+    "problemTypes": ["战略", "数据", "领导力"],
+    "difficulty": 1,
+    "evidence": [],
+    "problemEssence": "",
+    "surfacePhenomenon": "",
+    "deepNature": [
+      {"title": "心理学维度", "explanation": "", "case": ""},
+      {"title": "管理学维度", "explanation": "", "case": ""},
+      {"title": "毛泽东认识论维度", "explanation": "", "case": ""}
+    ],
+    "ceoSolution": {
+      "coreJudgment": "",
+      "verificationMethods": ["", "", ""],
+      "keyActions": ["", "", ""]
+    },
+    "theoryAnchors": {
+      "linkedTheoryModel": ["", "", ""],
+      "logicDissection": ["", "", ""]
+    },
+    "caseComparison": {
+      "counterexample": "",
+      "positiveExample": "",
+      "historicalAnalogy": ""
+    },
+    "moreSolutions": [
+      {"title": "", "steps": ["", "", ""], "applicability": ""},
+      {"title": "", "steps": ["", "", ""], "applicability": ""},
+      {"title": "", "steps": ["", "", ""], "applicability": ""}
+    ],
+    "transferableInsights": {
+      "team": "",
+      "reader": ""
+    }
+  }],
+  "quotes": [],
+  "suggestedTags": ["", ""],
+  "deepeningModes": [{"title": "", "goal": "", "questions": ["", "", ""]}]
+}
+
+要求：
+1. 只输出JSON。
+2. overview.oneLine 和 overview.logicLine 必须是基于会议原文的具体提炼，禁止使用通用模板句。
+3. meetingAnalysis 必须输出会议纪要专属分析内容，不能用高层讲话结构替代。
+4. topics 只有在原文存在清晰可提炼的话题时才输出；没有就返回空数组。
+5. topics 中每个话题至少提供 2 条原文证据。
+6. language 必须中文，内容必须贴合原文，不要编造。
+${skillInstruction}
+  19. 这个会议纪要原文如下：
+${text}
+      `.trim(),
+      },
+    ];
+  }
+  return [
+    {
+      role: "system",
+      content:
+        "你是一个企业高层视角材料分析助手。请严格根据输入原文进行结构化拆解，输出适合前端渲染的JSON，不要输出多余解释。你必须按照用户指定的文章框架生成内容。",
+    },
+    {
+      role: "user",
+      content: `
+请基于下面的高层视角材料原文，输出JSON对象，字段结构如下：
+{
+  "overview": {"oneLine": "", "logicLine": "", "wordCount": 0},
+  "categories": [{"name": "", "colorHint": "", "sentences": []}],
+  "topics": [{
+    "index": 1,
+    "title": "",
+    "sourceSummary": "",
+    "categoryName": "",
+    "problemTypes": ["战略", "数据", "领导力"],
+    "difficulty": 1,
+    "evidence": [],
+    "problemEssence": "",
+    "surfacePhenomenon": "",
+    "deepNature": [
+      {"title": "心理学维度", "explanation": "", "case": ""},
+      {"title": "管理学维度", "explanation": "", "case": ""},
+      {"title": "毛泽东认识论维度", "explanation": "", "case": ""}
+    ],
+    "ceoSolution": {
+      "coreJudgment": "",
+      "verificationMethods": ["", "", ""],
+      "keyActions": ["", "", ""]
+    },
+    "theoryAnchors": {
+      "linkedTheoryModel": ["", "", ""],
+      "logicDissection": ["", "", ""]
+    },
+    "caseComparison": {
+      "counterexample": "",
+      "positiveExample": "",
+      "historicalAnalogy": ""
+    },
+    "moreSolutions": [
+      {"title": "", "steps": ["", "", ""], "applicability": ""},
+      {"title": "", "steps": ["", "", ""], "applicability": ""},
+      {"title": "", "steps": ["", "", ""], "applicability": ""}
+    ],
+    "transferableInsights": {
+      "team": "",
+      "reader": ""
+    }
+  }],
+  "quotes": [],
+  "suggestedTags": ["", ""],
+  "deepeningModes": [{"title": "", "goal": "", "questions": ["", "", ""]}]
+}
+
+要求：
+1. 只输出JSON。
+2. 话题要围绕企业战略、数字化、AI、组织管理、流程、数据、激励、文化、领导力等。
+3. overview.oneLine 和 overview.logicLine 必须是读完这篇文章后的具体提炼，必须出现原文中的关键对象、场景或管理动作。禁止使用“围绕某些分类建立一套机制”“先定义核心命题，再分入维度”这类通用模板句。
+4. 左侧 topics 必须全部来源于原文，不允许生成原文没有出现或没有依据的泛泛题目。每个 topic 的 evidence 至少给 2 条原文句子；sourceSummary 用一句话说明这个话题来自原文哪段表达。
+5. titles 要像问题，适合做学习文章标题，但必须能被 evidence 直接支撑。标题中尽量保留原文中的具体名词、业务对象或管理场景。
+6. 右侧文章内容必须围绕当前 topic 的 title、sourceSummary、evidence 展开，不要脱离话题发散成通用管理文章。
+7. 每个 topic 必须按以下文章框架写清楚：难度等级、问题类型、问题实质、表面现象、深层本质、CEO的解法与关键动作、底层逻辑（理论锚点）、案例对照（跨时空验证）、更多解法与选择（拓展思维）、可迁移的启示。
+8. problemTypes 可以是多个类型，例如 ["战略", "数据", "领导力"]，但 categoryName 只填最主要的一个类型。
+9. 深层本质必须拆成三个维度，建议固定为：心理学维度、管理学维度、毛泽东认识论维度；每个维度都要有 explanation 和 case。
+10. CEO的解法与关键动作要包含核心判断、验证方法、关键行动。
+11. 底层逻辑要包含关联理论/模型，以及逻辑拆解。
+12. 案例对照要包含反例、正例、历史类比。
+13. 更多解法与选择至少给出 3 种，每种都要有步骤和适用场景。
+14. 可迁移的启示要包含对团队的启示和对读者的行动建议。
+15. quotes 选最值得反复学习的原文句子，最多10条。
+16. categories 至少输出3个，最多8个。
+17. suggestedTags 输出最核心的标签。
+	18. 语言必须中文，内容必须贴合原文，不要编造不存在的事实。${skillInstruction}
+  19. 这个讲话的原文如下：
+${text}
+      `.trim(),
+    },
+  ];
+}
+
+function parseJsonFromText(content) {
+  const text = String(content || "").trim();
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+  const raw = fenced ? fenced[1].trim() : text;
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end < 0) {
+    throw new Error("大模型返回内容不是有效 JSON。");
+  }
+  return JSON.parse(raw.slice(start, end + 1));
+}
+
+function normalizeDeepSeekAnalysis(raw, sourceText) {
+  validateDeepSeekAnalysis(raw);
+  const fallback = analyzeText(sourceText);
+  const categories = Array.isArray(raw?.categories) ? raw.categories : [];
+  const categoryMap = new Map(categoryDefs.map((item) => [item.name, item]));
+  const activeCategories = categories
+    .map((item) => {
+      const matched = categoryMap.get(item.name) || categoryDefs.find((def) => def.name === item.name) || categoryDefs[0];
+      const sentences = Array.isArray(item.sentences) ? item.sentences : [];
+      return {
+        category: matched,
+        items: sentences.map((sentence) => ({ text: sentence, weight: sentenceWeight(sentence) })),
+      };
+    })
+    .filter((item) => item.items.length);
+
+  const topics = Array.isArray(raw?.topics) && raw.topics.length
+    ? raw.topics.map((topic, index) => {
+        const category = categoryMap.get(topic.categoryName) || categoryDefs.find((item) => item.name === topic.categoryName) || fallback.topics[index]?.category || categoryDefs[0];
+        const deepNature = Array.isArray(topic.deepNature) && topic.deepNature.length
+          ? topic.deepNature.slice(0, 3).map((item, deepIndex) => ({
+              title: item.title || ["心理学维度", "管理学维度", "毛泽东认识论维度"][deepIndex] || `维度${deepIndex + 1}`,
+              explanation: item.explanation || "",
+              case: item.case || "",
+            }))
+          : buildDeepNature(category, topic.evidence || []);
+        const ceoSolution = topic.ceoSolution || {};
+        const theoryAnchors = topic.theoryAnchors || {};
+        const caseComparison = topic.caseComparison || {};
+        const moreSolutions = Array.isArray(topic.moreSolutions) && topic.moreSolutions.length
+          ? topic.moreSolutions.slice(0, 3).map((item) => ({
+              title: item.title || "",
+              steps: Array.isArray(item.steps) ? item.steps.slice(0, 3) : [],
+              applicability: item.applicability || "",
+            }))
+          : buildMoreSolutions(category);
+        const transferableInsights = topic.transferableInsights || {};
+        const problemTypes = normalizeProblemTypes(topic.problemTypes, topic.categoryName, category.name);
+        return {
+          index: topic.index || index + 1,
+          title: topic.title || fallback.topics[index]?.title || "未命名问题",
+          sourceSummary: topic.sourceSummary || buildTopicSourceSummary(Array.isArray(topic.evidence) ? topic.evidence : [], category),
+          category,
+          categoryName: category.name,
+          problemTypes,
+          difficulty: Math.min(5, Math.max(1, Number(topic.difficulty || 3))),
+          evidence: Array.isArray(topic.evidence) ? topic.evidence.slice(0, 4) : [],
+          problemEssence: topic.problemEssence || topic.essence || category.essence,
+          surfacePhenomenon: topic.surfacePhenomenon || buildSurfacePhenomenon(Array.isArray(topic.evidence) ? topic.evidence : [], category),
+          deepNature,
+          ceoSolution: {
+            coreJudgment: ceoSolution.coreJudgment || topic.actualSolution || buildCeoSolution(Array.isArray(topic.evidence) ? topic.evidence : [], category).coreJudgment,
+            verificationMethods: Array.isArray(ceoSolution.verificationMethods) && ceoSolution.verificationMethods.length
+              ? ceoSolution.verificationMethods.slice(0, 3)
+              : buildCeoSolution(Array.isArray(topic.evidence) ? topic.evidence : [], category).verificationMethods,
+            keyActions: Array.isArray(ceoSolution.keyActions) && ceoSolution.keyActions.length
+              ? ceoSolution.keyActions.slice(0, 3)
+              : buildCeoSolution(Array.isArray(topic.evidence) ? topic.evidence : [], category).keyActions,
+          },
+          theoryAnchors: {
+            linkedTheoryModel: Array.isArray(theoryAnchors.linkedTheoryModel) && theoryAnchors.linkedTheoryModel.length
+              ? theoryAnchors.linkedTheoryModel.slice(0, 4)
+              : buildTheoryAnchors(category, Array.isArray(topic.evidence) ? topic.evidence : []).linkedTheoryModel,
+            logicDissection: Array.isArray(theoryAnchors.logicDissection) && theoryAnchors.logicDissection.length
+              ? theoryAnchors.logicDissection.slice(0, 3)
+              : buildTheoryAnchors(category, Array.isArray(topic.evidence) ? topic.evidence : []).logicDissection,
+          },
+          caseComparison: {
+            counterexample: caseComparison.counterexample || topic.caseStory || buildCaseComparison(category).counterexample,
+            positiveExample: caseComparison.positiveExample || buildCaseComparison(category).positiveExample,
+            historicalAnalogy: caseComparison.historicalAnalogy || buildCaseComparison(category).historicalAnalogy,
+          },
+          moreSolutions,
+          transferableInsights: {
+            team: transferableInsights.team || buildTransferableInsights(category, Array.isArray(topic.evidence) ? topic.evidence : []).team,
+            reader: transferableInsights.reader || buildTransferableInsights(category, Array.isArray(topic.evidence) ? topic.evidence : []).reader,
+          },
+        };
+      })
+    : [];
+
+  const overview = {
+    oneLine: raw.overview.oneLine,
+    logicLine: raw.overview.logicLine,
+    wordCount: raw?.overview?.wordCount || fallback.overview.wordCount,
+  };
+  const meetingAnalysis = normalizeMeetingAnalysis(raw?.meetingAnalysis);
+
+  const quotes = Array.isArray(raw?.quotes) && raw.quotes.length ? raw.quotes.slice(0, 10) : fallback.quotes;
+  const suggestedTags = Array.isArray(raw?.suggestedTags) && raw.suggestedTags.length ? raw.suggestedTags.slice(0, 8) : fallback.suggestedTags;
+  const modelDeepeningModes = Array.isArray(raw?.deepeningModes) && raw.deepeningModes.length
+    ? raw.deepeningModes.map((mode) => ({
+        title: mode.title || "演化式深化",
+        goal: mode.goal || "",
+        questions: Array.isArray(mode.questions) ? mode.questions.slice(0, 3) : [],
+      }))
+    : fallback.deepeningModes;
+
+  const grouped = Object.fromEntries(
+    categoryDefs.map((category) => [category.id, { category, items: [] }]),
+  );
+  activeCategories.forEach((group) => {
+    const key = group.category.id;
+    if (grouped[key]) {
+      grouped[key] = group;
+    }
+  });
+
+  const sentences = fallback.sentences;
+  return {
+    text: sourceText,
+    sentences,
+    grouped,
+    overview,
+    topics,
+    meetingAnalysis,
+    quotes,
+    activeCategories,
+    suggestedTags,
+    deepeningModes: modelDeepeningModes,
+    analysisSource: "deepseek",
+  };
+}
+
+function validateDeepSeekAnalysis(raw) {
+  const oneLine = String(raw?.overview?.oneLine || "").trim();
+  const logicLine = String(raw?.overview?.logicLine || "").trim();
+  if (!oneLine || !logicLine) {
+    throw new Error("DeepSeek 返回缺少具体的一句话概括或逻辑主线。");
+  }
+  const looksLikeLocalTemplate =
+    /这篇讲话的核心，是围绕“.*”建立一套从判断到行动/.test(oneLine) ||
+    /先定义核心命题，再把观点分入.*维度/.test(logicLine);
+  if (looksLikeLocalTemplate) {
+    throw new Error("DeepSeek 返回内容过于模板化，未形成基于原文的具体提炼。");
+  }
+  const hasMeetingAnalysis = Boolean(raw?.meetingAnalysis && typeof raw.meetingAnalysis === "object");
+  if (!hasMeetingAnalysis && (!Array.isArray(raw?.topics) || raw.topics.length < 1)) {
+    throw new Error("DeepSeek 没有返回可学习的话题。");
+  }
+  const weakTopic = (raw.topics || []).find((topic) => !Array.isArray(topic?.evidence) || topic.evidence.length < 2);
+  if (weakTopic) {
+    throw new Error(`DeepSeek 返回的话题缺少足够原文依据：${weakTopic.title || "未命名话题"}`);
+  }
+}
+
+function normalizeMeetingAnalysis(input = null) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const info = input.meetingInfo || {};
+  return {
+    meetingInfo: {
+      topic: info.topic || info.theme || "未提及",
+      goal: info.goal || "未提及",
+      time: info.time || "未知",
+      duration: info.duration || "未知",
+      participants: Array.isArray(info.participants) ? info.participants.filter(Boolean) : [],
+      absentees: Array.isArray(info.absentees) ? info.absentees.filter(Boolean) : [],
+      host: info.host || "未提及",
+      recorder: info.recorder || "未提及",
+    },
+    decisions: Array.isArray(input.decisions) ? input.decisions : [],
+    actionItems: Array.isArray(input.actionItems) ? input.actionItems : [],
+    discussionSummary: Array.isArray(input.discussionSummary) ? input.discussionSummary : [],
+    collaboration: input.collaboration && typeof input.collaboration === "object" ? input.collaboration : {},
+    risksAndDependencies: input.risksAndDependencies && typeof input.risksAndDependencies === "object" ? input.risksAndDependencies : {},
+    pendingQuestions: Array.isArray(input.pendingQuestions) ? input.pendingQuestions : [],
+    topicExtractionNote: input.topicExtractionNote || "",
+  };
+}
+
+async function analyzeWithDeepSeek(text, options = {}) {
+  const settings = readDeepSeekSettings();
+  const payload = await callDeepSeek(settings, buildDeepSeekPrompt(text, options.skill || currentTopicSkill()), options);
+  const content = payload?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("DeepSeek 没有返回分析结果。");
+  }
+  const parsed = parseJsonFromText(content);
+  return normalizeDeepSeekAnalysis(parsed, text);
+}
+
+async function testDeepSeekConnection(settings) {
+  const payload = await callDeepSeek(settings, [
+    {
+      role: "system",
+      content: "你是一个API连通性测试助手。只输出JSON，不要输出额外解释。",
+    },
+    {
+      role: "user",
+      content: "请只输出一个JSON对象：{\"ok\":true,\"message\":\"DeepSeek连接成功\"}",
+    },
+  ], { temperature: 0, maxTokens: 120, useThinking: false });
+  const content = payload?.choices?.[0]?.message?.content;
+  const parsed = parseJsonFromText(content);
+  if (!parsed?.ok) {
+    throw new Error("DeepSeek 已返回，但测试 JSON 中 ok 不为 true。");
+  }
+  return parsed;
+}
+
+async function callDeepSeek(settings, messages, options = {}) {
+  if (!settings.apiKey) {
+    throw new Error("请先在系统配置 > 大模型配置中填写 API Key。");
+  }
+  const requestBody = {
+    model: settings.model || DEFAULT_DEEPSEEK_SETTINGS.model,
+    messages,
+    temperature: options.temperature ?? 0.2,
+    stream: false,
+    response_format: { type: "json_object" },
+  };
+  if (options.useThinking !== false) {
+    requestBody.thinking = { type: settings.thinking === "disabled" ? "disabled" : "enabled" };
+    requestBody.reasoning_effort = settings.reasoningEffort || "high";
+  }
+  if (options.maxTokens) {
+    requestBody.max_tokens = options.maxTokens;
+  }
+  let response;
+  try {
+    response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      signal: options.signal,
+      body: JSON.stringify(requestBody),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("本次分析已停止。");
+    }
+    throw new Error(formatDeepSeekNetworkError(error));
+  }
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(formatDeepSeekHttpError(response.status, errText));
+  }
+  const payload = await response.json();
+  const finishReason = payload?.choices?.[0]?.finish_reason;
+  if (finishReason && finishReason !== "stop") {
+    throw new Error(`DeepSeek 返回未完整结束：${finishReason}`);
+  }
+  return payload;
+}
+
+function formatDeepSeekNetworkError(error) {
+  const message = String(error?.message || error || "");
+  if (/Failed to fetch|NetworkError|Load failed|fetch/i.test(message)) {
+    return "DeepSeek 网络连接失败。常见原因：浏览器跨域限制（CORS）、Base URL 不可达、公司网络/代理拦截。请先用“测试连接”确认；如果仍失败，需要改用本地后端代理调用。";
+  }
+  return `DeepSeek 网络连接失败：${message}`;
+}
+
+function formatDeepSeekHttpError(status, errText) {
+  const shortText = String(errText || "").slice(0, 240);
+  if (status === 401 || status === 403) {
+    return `DeepSeek 鉴权失败：请检查 API Key 是否正确、是否有权限。${shortText}`;
+  }
+  if (status === 404) {
+    return `DeepSeek 模型或接口不存在：请检查 Base URL 和模型名称。${shortText}`;
+  }
+  if (status === 429) {
+    return `DeepSeek 调用频率或额度受限：请稍后再试，或检查账户额度。${shortText}`;
+  }
+  if (status >= 500) {
+    return `DeepSeek 服务端异常：${status} ${shortText}`;
+  }
+  return `DeepSeek 调用失败：${status} ${shortText}`;
+}
+
+function renderAnalysis() {
+  const analysis = state.analysis;
+  if (!analysis) {
+    return;
+  }
+  const currentDoc = state.documents.find((doc) => doc.id === state.currentDocId) || state.allDocuments.find((doc) => doc.id === state.currentDocId) || null;
+  const isMeetingNotes = Boolean(
+    materialTypeNameForDoc(currentDoc) === "会议纪要"
+    || analysis.meetingAnalysis,
+  );
+
+  els.docTitle.textContent = normalizeDocTitle(els.docNameInput.value || state.fileName || "粘贴文本分析");
+  els.oneLine.textContent = analysis.overview.oneLine;
+  els.logicLine.textContent = analysis.overview.logicLine;
+  if (els.analysisSourceBadge) {
+    els.analysisSourceBadge.textContent = analysis.analysisSource === "deepseek" ? "DeepSeek" : "本地";
+    els.analysisSourceBadge.dataset.source = analysis.analysisSource || "local";
+  }
+  els.metricTopics.textContent = analysis.topics.length;
+  els.metricCategories.textContent = analysis.activeCategories.length;
+  els.metricQuotes.textContent = analysis.quotes.length;
+  els.metricWords.textContent = analysis.overview.wordCount;
+
+  renderCategories(analysis);
+  renderTopics(analysis);
+  renderOriginalText(analysis.text);
+  renderMeetingAnalysis(analysis.meetingAnalysis, isMeetingNotes);
+  if (!els.tagInput.value.trim() && analysis.suggestedTags?.length) {
+    els.tagInput.value = analysis.suggestedTags.join(", ");
+  }
+  els.parseHint.textContent = isMeetingNotes
+    ? `已完成会议纪要分析：${analysis.sentences.length} 个有效句子，${analysis.topics.length} 个可提炼话题。`
+    : `已完成拆解：${analysis.sentences.length} 个有效句子，${analysis.topics.length} 个学习话题。`;
+  renderTopicHome();
+}
+
+function renderMeetingAnalysis(meetingAnalysis, isMeetingNotes = false) {
+  if (!els.meetingAnalysisPanel) {
+    return;
+  }
+  if (!isMeetingNotes && !meetingAnalysis) {
+    els.meetingAnalysisPanel.hidden = true;
+    els.meetingAnalysisPanel.innerHTML = "";
+    return;
+  }
+  els.meetingAnalysisPanel.hidden = false;
+  els.meetingAnalysisPanel.innerHTML = buildMeetingAnalysisHtml(meetingAnalysis);
+}
+
+function buildTopicRows() {
+  const rows = [];
+  const sourceDocs = isAdmin()
+    ? state.allDocuments.filter((doc) => !doc.deletedAt)
+    : state.documents;
+  sourceDocs.forEach((doc) => {
+    const topics = doc.analysis?.topics || [];
+    topics.forEach((topic, index) => {
+      const tags = [
+        ...(Array.isArray(topic.problemTypes) ? topic.problemTypes : []),
+        ...(doc.tags || []),
+      ].filter(Boolean);
+      const favorite = Boolean(topic.favorite);
+      rows.push({
+        id: `${doc.id}::${index}`,
+        docId: doc.id,
+        docTitle: doc.title,
+        doc,
+        topic,
+        topicIndex: index,
+        displayIndex: topic.topicCode || topicCodeFromNumber(rows.length + 1),
+        title: topic.title || `话题${index + 1}`,
+        tags: [...new Set(tags)].slice(0, 5),
+        type: materialTypeNameForDoc(doc),
+        source: materialSourceNameForDoc(doc),
+        skillDisplay: materialSkillDisplay(doc),
+        favorite,
+        ownerEmail: doc.ownerEmail || "",
+        ownerEmailKey: doc.ownerEmailKey || "",
+        updatedAt: doc.lastStudiedAt || doc.updatedAt || doc.createdAt,
+      });
+    });
+  });
+  return rows.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function renderTopicFilters() {
+  if (!els.topicSourceFilter || !els.topicTypeFilter) {
+    return;
+  }
+  const activeDocs = (isAdmin() ? state.allDocuments : state.documents).filter((doc) => !doc.deletedAt);
+  const sourceItems = [...state.materialSources];
+  activeDocs.forEach((doc) => {
+    const source = materialSourceForDoc(doc);
+    if (source && !sourceItems.some((item) => item.id === source.id)) {
+      sourceItems.push(source);
+    }
+  });
+  const typeItems = [...state.materialTypes];
+  activeDocs.forEach((doc) => {
+    const type = materialTypeForDoc(doc);
+    if (type && !typeItems.some((item) => item.id === type.id)) {
+      typeItems.push(type);
+    }
+  });
+  const sourceOptions = [`<option value="">全部资料来源</option>`]
+    .concat(sourceItems.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  const typeOptions = [`<option value="">全部资料类型</option>`]
+    .concat(typeItems.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  els.topicSourceFilter.innerHTML = sourceOptions;
+  els.topicTypeFilter.innerHTML = typeOptions;
+  els.topicSourceFilter.value = state.topicSourceFilter;
+  els.topicTypeFilter.value = state.topicTypeFilter;
+  if (els.topicOwnerFilter && els.topicOwnerOptions) {
+    const showOwnerFilter = isAdmin();
+    els.topicOwnerFilter.hidden = !showOwnerFilter;
+    els.topicOwnerFilter.value = state.topicOwnerFilter || "";
+    els.topicOwnerOptions.innerHTML = state.users
+      .map((user) => `<option value="${escapeHtml(user.email)}"></option>`)
+      .join("");
+  }
+}
+
+function materialDocsForInsight() {
+  const activeDocs = (isAdmin() ? state.allDocuments : state.documents)
+    .filter((doc) => !doc.deletedAt && doc.analysis);
+  const keyword = state.materialListSearch.trim().toLowerCase();
+  const ownerKeyword = state.materialListOwnerFilter.trim().toLowerCase();
+  return activeDocs
+    .filter((doc) => {
+      const sourceMatch = !state.materialListSourceFilter || materialSourceIdForDoc(doc) === state.materialListSourceFilter;
+      const typeMatch = !state.materialListTypeFilter || materialTypeIdForDoc(doc) === state.materialListTypeFilter;
+      const ownerMatch = !isAdmin() || !ownerKeyword || `${doc.ownerEmail} ${doc.ownerEmailKey}`.toLowerCase().includes(ownerKeyword);
+      const favoriteMatch = !state.materialFavoriteOnly || Boolean(doc.favorite);
+      const searchable = materialSearchText(doc).toLowerCase();
+      return sourceMatch && typeMatch && ownerMatch && favoriteMatch && (!keyword || searchable.includes(keyword));
+    })
+    .sort((a, b) => new Date(b.lastStudiedAt || b.updatedAt || b.createdAt) - new Date(a.lastStudiedAt || a.updatedAt || a.createdAt));
+}
+
+function materialSearchText(doc) {
+  return [
+    materialDisplayCode(doc),
+    doc.title,
+    doc.fileName,
+    (doc.tags || []).join(" "),
+    materialSourceNameForDoc(doc),
+    materialTypeNameForDoc(doc),
+    doc.rawText,
+  ].filter(Boolean).join(" ");
+}
+
+function topicSearchText(row) {
+  const topic = row.topic || {};
+  return [
+    row.displayIndex,
+    row.title,
+    row.tags.join(" "),
+    topic.problemEssence,
+    topic.essence,
+    topic.surfacePhenomenon,
+    topic.sourceSummary,
+    ...(Array.isArray(topic.evidence) ? topic.evidence : []),
+    ...(Array.isArray(topic.problemTypes) ? topic.problemTypes : []),
+  ].filter(Boolean).join(" ");
+}
+
+function highlightSearchTerm(value, keyword) {
+  const text = String(value || "");
+  const term = String(keyword || "").trim();
+  if (!term) {
+    return escapeHtml(text);
+  }
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escapeHtml(text).replace(new RegExp(escapedTerm, "gi"), (match) => `<mark class="search-highlight">${match}</mark>`);
+}
+
+function materialSearchSnippet(doc, keyword) {
+  const term = String(keyword || "").trim();
+  if (!term || !doc?.rawText) {
+    return "";
+  }
+  const raw = normalizeText(doc.rawText || "");
+  const index = raw.toLowerCase().indexOf(term.toLowerCase());
+  if (index < 0) {
+    return "";
+  }
+  const start = Math.max(0, index - 26);
+  const end = Math.min(raw.length, index + term.length + 42);
+  return `${start > 0 ? "..." : ""}${raw.slice(start, end)}${end < raw.length ? "..." : ""}`;
+}
+
+function docSkillAnalyses(doc) {
+  const analyses = { ...(doc?.skillAnalyses || {}) };
+  if (doc?.analysis) {
+    analyses[doc.currentSkillVersion || doc.analysis.skillVersion || DEFAULT_TOPIC_SKILL.version] = doc.analysis;
+  }
+  return analyses;
+}
+
+function docSkillVersions(doc) {
+  const analyses = docSkillAnalyses(doc);
+  return Object.keys(analyses)
+    .map((version) => ({
+      version,
+      analysis: analyses[version],
+      skill: skillMetaForAnalysis(version, analyses[version]),
+      appliedAt: analyses[version]?.skillAppliedAt || doc.currentSkillAppliedAt || doc.updatedAt,
+    }))
+    .sort((a, b) => Number(b.skill?.versionNumber || 0) - Number(a.skill?.versionNumber || 0));
+}
+
+function docAnalysisForSkill(doc, version) {
+  const analyses = docSkillAnalyses(doc);
+  return analyses[version] || doc.analysis;
+}
+
+function hasNewTopicSkill(doc) {
+  const latest = currentTopicSkill(materialTypeIdForDoc(doc) || "type-executive-view");
+  const ownsDoc = (doc?.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey;
+  return Boolean(ownsDoc && doc?.analysis?.topics?.length && latest.version !== (doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version));
+}
+
+function setSkillRefreshProgress(docId, percent, message) {
+  state.skillRefreshState = { docId, percent, message };
+  renderMaterialOverviewPage();
+}
+
+function skillRefreshCandidateDocs(materialTypeId, skill = currentTopicSkill(materialTypeId || "type-executive-view")) {
+  return state.allDocuments
+    .filter((doc) => !doc.deletedAt)
+    .filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey)
+    .filter((doc) => materialTypeIdForDoc(doc) === (materialTypeId || "type-executive-view"))
+    .filter((doc) => doc.analysis?.topics?.length)
+    .filter((doc) => (doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version) !== skill.version)
+    .sort((a, b) => new Date(b.lastStudiedAt || b.updatedAt || b.createdAt) - new Date(a.lastStudiedAt || a.updatedAt || a.createdAt));
+}
+
+function resetSkillBatchRefresh(skill, docs) {
+  state.skillBatchRefresh = {
+    active: false,
+    background: false,
+    completed: false,
+    modalOpen: false,
+    skillTypeId: skill.targetMaterialTypeId || "type-executive-view",
+    skillVersion: skill.version,
+    selectedIds: docs.map((doc) => doc.id),
+    progressByDoc: Object.fromEntries(docs.map((doc) => [doc.id, { percent: 0, message: "等待执行", status: "pending" }])),
+    logs: [],
+  };
+}
+
+function appendSkillBatchLog(message) {
+  const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  state.skillBatchRefresh.logs = [...(state.skillBatchRefresh.logs || []), { time, message }].slice(-80);
+  renderSkillBatchRefreshModal();
+  renderTopicSkillPage();
+}
+
+function setSkillBatchDocProgress(docId, percent, message, status = "running") {
+  state.skillBatchRefresh.progressByDoc = {
+    ...(state.skillBatchRefresh.progressByDoc || {}),
+    [docId]: { percent: Math.max(0, Math.min(100, Number(percent || 0))), message, status },
+  };
+  renderSkillBatchRefreshModal();
+  renderTopicSkillPage();
+}
+
+async function refreshDocumentWithSkill(doc, skill, onProgress = () => {}) {
+  const now = new Date().toISOString();
+  onProgress(25, "正在连接大模型");
+  const analysis = await analyzeWithDeepSeek(doc.rawText || "", {
+    signal: state.analysisAbortController.signal,
+    skill,
+  });
+  onProgress(82, "模型已返回，正在保存新版话题");
+  const historicalTopicCodes = Object.values(docSkillAnalyses(doc))
+    .flatMap((item) => item?.topics || [])
+    .map((topic) => topic.topicCode)
+    .filter(Boolean);
+  const codedAnalysis = preserveTopicFavorites(doc, withSkillMetadata(assignTopicCodesToAnalysis(analysis, doc.id, historicalTopicCodes), skill));
+  const updated = {
+    ...doc,
+    analysis: codedAnalysis,
+    skillAnalyses: {
+      ...docSkillAnalyses(doc),
+      [skill.version]: codedAnalysis,
+    },
+    currentSkillVersion: skill.version,
+    currentSkillName: skill.name,
+    currentSkillAppliedAt: now,
+    tags: codedAnalysis.suggestedTags || doc.tags || [],
+    updatedAt: now,
+    lastStudiedAt: now,
+  };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await logEvent("refresh_topic_skill", { docId: doc.id, title: doc.title, skillVersion: skill.version });
+  return updated;
+}
+
+function skillBatchRefreshDocs() {
+  const batch = state.skillBatchRefresh;
+  const ids = new Set(batch.selectedIds || []);
+  return state.allDocuments.filter((doc) => ids.has(doc.id));
+}
+
+function docTopicCount(doc) {
+  return Number(doc?.analysis?.topics?.length || 0);
+}
+
+function totalTopicCount(docs) {
+  return docs.reduce((sum, doc) => sum + docTopicCount(doc), 0);
+}
+
+function renderSkillBatchRefreshModal() {
+  const overlay = document.querySelector("[data-skill-batch-overlay]");
+  if (!overlay) {
+    return;
+  }
+  const batch = state.skillBatchRefresh;
+  const skill = skillByVersion(batch.skillVersion, batch.skillTypeId) || currentTopicSkill(batch.skillTypeId || "type-executive-view");
+  const candidates = skillRefreshCandidateDocs(batch.skillTypeId, skill);
+  const selectedIds = new Set(batch.selectedIds || []);
+  const selectedDocs = state.allDocuments.filter((doc) => selectedIds.has(doc.id));
+  const displayDocs = (batch.active || batch.completed || selectedIds.size) ? selectedDocs : candidates;
+  const total = selectedIds.size;
+  const selectedTopicTotal = totalTopicCount(selectedDocs);
+  const candidateTopicTotal = totalTopicCount(candidates);
+  const finished = Object.values(batch.progressByDoc || {}).filter((item) => item.status === "done").length;
+  const running = Boolean(batch.active);
+  overlay.querySelector(".skill-batch-dialog").innerHTML = `
+    <header class="skill-diff-header">
+      <div>
+        <p class="section-kicker">Skill Batch</p>
+        <h3>批量刷新材料 · ${escapeHtml(skillDisplayName(skill, "话题拆解 SKILL.md"))}</h3>
+      </div>
+      <button class="mini-button" type="button" data-skill-batch-close>关闭</button>
+    </header>
+    <div class="skill-batch-summary">
+      <strong>${running ? `执行中：${finished}/${total}` : batch.completed ? `已完成：${finished}/${total}` : `待执行：已选 ${total} 份`}</strong>
+      <span>候选 ${escapeHtml(String(candidates.length))} 份材料 / ${escapeHtml(String(candidateTopicTotal))} 个话题；已选 ${escapeHtml(String(total))} 份 / ${escapeHtml(String(selectedTopicTotal))} 个话题。</span>
+    </div>
+    <div class="skill-batch-body">
+      <section class="skill-batch-docs">
+        ${displayDocs.length ? displayDocs.map((doc) => {
+          const progress = batch.progressByDoc?.[doc.id] || { percent: 0, message: "等待执行", status: "pending" };
+          const checked = selectedIds.has(doc.id);
+          return `
+            <article class="skill-batch-doc${checked ? " is-selected" : ""}">
+              <label>
+                <input type="checkbox" data-skill-batch-doc="${escapeHtml(doc.id)}" ${checked ? "checked" : ""} ${running ? "disabled" : ""} />
+                <span>
+                  <strong>${escapeHtml(doc.title || doc.fileName)}</strong>
+                  <small>${escapeHtml(materialDisplayCode(doc))} · ${escapeHtml(String(docTopicCount(doc)))} 个话题 · 当前：${escapeHtml(materialSkillDisplay(doc))}</small>
+                </span>
+              </label>
+              <div class="material-refresh-progress">
+                <div><span style="width:${progress.percent}%"></span></div>
+                <small>${escapeHtml(progress.message || "等待执行")} · ${escapeHtml(String(progress.percent || 0))}%</small>
+              </div>
+            </article>
+          `;
+        }).join("") : `<p class="empty-state compact">没有需要刷新到最新 SKILL 的材料。</p>`}
+      </section>
+      <section class="skill-batch-log">
+        <h4>执行日志</h4>
+        ${(batch.logs || []).length ? batch.logs.map((entry) => `<p><span>${escapeHtml(entry.time)}</span>${escapeHtml(entry.message)}</p>`).join("") : `<p class="empty-state compact">尚未开始执行。</p>`}
+      </section>
+    </div>
+    <footer class="skill-batch-actions">
+      <button class="mini-button" type="button" data-skill-batch-select-all ${running || !candidates.length ? "disabled" : ""}>全选</button>
+      <button class="mini-button" type="button" data-skill-batch-clear ${running ? "disabled" : ""}>清空</button>
+      <button class="primary" type="button" data-skill-batch-run ${running || !selectedDocs.length ? "disabled" : ""}>执行刷新</button>
+    </footer>
+  `;
+  bindSkillBatchRefreshModal(overlay);
+}
+
+function bindSkillBatchRefreshModal(overlay) {
+  const batch = state.skillBatchRefresh;
+  const skill = skillByVersion(batch.skillVersion, batch.skillTypeId) || currentTopicSkill(batch.skillTypeId || "type-executive-view");
+  const candidates = skillRefreshCandidateDocs(batch.skillTypeId, skill);
+  overlay.querySelector("[data-skill-batch-close]")?.addEventListener("click", () => closeSkillBatchRefreshModal());
+  overlay.querySelector("[data-skill-batch-select-all]")?.addEventListener("click", () => {
+    state.skillBatchRefresh.selectedIds = candidates.map((doc) => doc.id);
+    state.skillBatchRefresh.progressByDoc = Object.fromEntries(candidates.map((doc) => [
+      doc.id,
+      state.skillBatchRefresh.progressByDoc?.[doc.id] || { percent: 0, message: "等待执行", status: "pending" },
+    ]));
+    renderSkillBatchRefreshModal();
+    renderTopicSkillPage();
+  });
+  overlay.querySelector("[data-skill-batch-clear]")?.addEventListener("click", () => {
+    state.skillBatchRefresh.selectedIds = [];
+    renderSkillBatchRefreshModal();
+    renderTopicSkillPage();
+  });
+  overlay.querySelectorAll("[data-skill-batch-doc]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      const ids = new Set(state.skillBatchRefresh.selectedIds || []);
+      if (checkbox.checked) {
+        ids.add(checkbox.dataset.skillBatchDoc);
+      } else {
+        ids.delete(checkbox.dataset.skillBatchDoc);
+      }
+      state.skillBatchRefresh.selectedIds = [...ids];
+      renderSkillBatchRefreshModal();
+      renderTopicSkillPage();
+    });
+  });
+  overlay.querySelector("[data-skill-batch-run]")?.addEventListener("click", () => runSkillBatchRefresh());
+}
+
+async function closeSkillBatchRefreshModal() {
+  const overlay = document.querySelector("[data-skill-batch-overlay]");
+  if (!overlay) {
+    return;
+  }
+  if (state.skillBatchRefresh.active) {
+    const action = await confirmSkillBatchLeave();
+    if (action === "stop") {
+      state.analysisAbortController?.abort();
+      state.skillBatchRefresh.active = false;
+      state.isAnalyzing = false;
+      state.allowAnalysisBackground = false;
+      appendSkillBatchLog("用户停止了本次批量刷新。");
+    } else if (action !== "background") {
+      return;
+    } else {
+      state.skillBatchRefresh.background = true;
+      state.allowAnalysisBackground = true;
+      appendSkillBatchLog("已切换为后台执行，可先浏览其他页面。");
+    }
+  }
+  state.skillBatchRefresh.modalOpen = false;
+  overlay.remove();
+  renderTopicSkillPage();
+}
+
+function openSkillBatchRefreshModal(materialTypeId = state.activeSkillMaterialTypeId) {
+  const skill = currentTopicSkill(materialTypeId || "type-executive-view");
+  const existing = state.skillBatchRefresh;
+  const candidates = skillRefreshCandidateDocs(materialTypeId, skill);
+  if ((!existing.active && !existing.completed) || existing.skillVersion !== skill.version || existing.skillTypeId !== (skill.targetMaterialTypeId || materialTypeId)) {
+    resetSkillBatchRefresh(skill, candidates);
+  }
+  if (document.querySelector("[data-skill-batch-overlay]")) {
+    renderSkillBatchRefreshModal();
+    return;
+  }
+  const overlay = document.createElement("div");
+  overlay.className = "skill-diff-overlay skill-batch-overlay";
+  overlay.dataset.skillBatchOverlay = "true";
+  overlay.innerHTML = `<section class="skill-diff-dialog skill-batch-dialog" role="dialog" aria-modal="true"></section>`;
+  document.body.appendChild(overlay);
+  state.skillBatchRefresh.modalOpen = true;
+  renderSkillBatchRefreshModal();
+}
+
+async function runSkillBatchRefresh() {
+  const batch = state.skillBatchRefresh;
+  const skill = skillByVersion(batch.skillVersion, batch.skillTypeId) || currentTopicSkill(batch.skillTypeId || "type-executive-view");
+  const selected = skillBatchRefreshDocs().filter((doc) => (doc.currentSkillVersion || doc.analysis?.skillVersion) !== skill.version);
+  if (!selected.length || state.isAnalyzing) {
+    return;
+  }
+  const ok = await confirmAction({
+    title: "批量刷新 SKILL",
+    message: `确认使用 ${skillDisplayName(skill, "话题拆解 SKILL.md")} 批量刷新 ${selected.length} 份材料吗？这会重新调用大模型生成这些材料的话题内容。`,
+    confirmText: "确认执行",
+  });
+  if (!ok) {
+    return;
+  }
+  state.skillBatchRefresh.active = true;
+  state.skillBatchRefresh.completed = false;
+  state.skillBatchRefresh.background = false;
+  state.isAnalyzing = true;
+  state.allowAnalysisBackground = false;
+  state.analysisAbortController = new AbortController();
+  appendSkillBatchLog(`开始批量刷新 ${selected.length} 份材料，目标版本：${skillDisplayName(skill, "话题拆解 SKILL.md")}`);
+  try {
+    for (let index = 0; index < selected.length; index += 1) {
+      const doc = selected[index];
+      if (state.analysisAbortController.signal.aborted) {
+        throw new Error("本次批量刷新已停止。");
+      }
+      appendSkillBatchLog(`开始处理 ${index + 1}/${selected.length}：${doc.title || doc.fileName}`);
+      setSkillBatchDocProgress(doc.id, 10, "准备发送材料", "running");
+      setAnalysisProgress("SKILL 批量刷新", Math.min(90, 10 + Math.round((index / selected.length) * 70)), `正在用 ${skillDisplayName(skill, "话题拆解 SKILL.md")} 刷新：${doc.title || doc.fileName}`);
+      const updated = await refreshDocumentWithSkill(doc, skill, (percent, message) => {
+        setSkillBatchDocProgress(doc.id, percent, message, "running");
+      });
+      state.allDocuments = state.allDocuments.map((item) => (item.id === updated.id ? updated : item));
+      state.documents = state.documents.map((item) => (item.id === updated.id ? updated : item));
+      setSkillBatchDocProgress(doc.id, 100, "刷新完成", "done");
+      appendSkillBatchLog(`完成 ${index + 1}/${selected.length}：${doc.title || doc.fileName}`);
+    }
+    await loadDocuments();
+    state.skillBatchRefresh.active = false;
+    state.skillBatchRefresh.completed = true;
+    state.isAnalyzing = false;
+    state.allowAnalysisBackground = false;
+    state.analysisAbortController = null;
+    setAnalysisProgress("完成", 100, `已使用 ${skillDisplayName(skill, "话题拆解 SKILL.md")} 批量刷新完成。`);
+    appendSkillBatchLog("批量刷新已全部完成。");
+  } catch (error) {
+    const stopped = /已停止|aborted|abort/i.test(String(error.message || ""));
+    state.skillBatchRefresh.active = false;
+    state.isAnalyzing = false;
+    state.allowAnalysisBackground = false;
+    state.analysisAbortController = null;
+    setAnalysisProgress(stopped ? "已停止" : "失败", 0, stopped ? "已停止本次批量刷新。" : `批量刷新失败：${error.message}`);
+    appendSkillBatchLog(stopped ? "批量刷新已停止。" : `批量刷新失败：${error.message}`);
+  } finally {
+    updateUploadButtons();
+    renderSkillBatchRefreshModal();
+    renderTopicSkillPage();
+  }
+}
+
+async function refreshMaterialWithLatestSkill(docId) {
+  const doc = state.allDocuments.find((item) => item.id === docId);
+  if (!doc || doc.deletedAt || (doc.ownerEmailKey || "").toLowerCase() !== state.currentUser?.emailKey) {
+    return;
+  }
+  if (state.isAnalyzing) {
+    setSkillNotice("当前已有分析任务正在执行，请稍后再刷新 SKILL。", "error");
+    renderMaterialOverviewPage();
+    return;
+  }
+  const skill = currentTopicSkill(materialTypeIdForDoc(doc) || "type-executive-view");
+  if ((doc.currentSkillVersion || doc.analysis?.skillVersion) === skill.version) {
+    setSkillNotice(`这份材料已经使用 ${skill.version}。`, "info");
+    renderMaterialOverviewPage();
+    return;
+  }
+  const ok = await confirmAction({
+    title: "刷新话题 SKILL",
+    message: `确认用 ${skill.version} 重新分析“${doc.title || doc.fileName}”吗？这份材料下的话题会按新 SKILL 重新组织。`,
+    confirmText: "确认刷新",
+  });
+  if (!ok) {
+    return;
+  }
+  const now = new Date().toISOString();
+  state.isAnalyzing = true;
+  state.analysisAbortController = new AbortController();
+  setSkillNotice(`正在使用话题 SKILL ${skill.version} 重新分析：${doc.title || doc.fileName}`, "info");
+  setAnalysisProgress("SKILL 刷新", 10, `正在准备 ${skill.version} 的话题分析。`);
+  setSkillRefreshProgress(doc.id, 10, `准备使用 ${skill.version} 重新分析`);
+  try {
+    setAnalysisProgress("连接模型", 25, "正在连接大模型并发送材料原文。");
+    setSkillRefreshProgress(doc.id, 25, "正在连接大模型");
+    setAnalysisProgress("模型分析", 55, "大模型正在按新版 SKILL 重新拆解话题。");
+    setSkillNotice(`55% · 正在按话题 SKILL ${skill.version} 重新拆解材料，长文可能需要等待。`, "info");
+    setSkillRefreshProgress(doc.id, 55, "正在重新拆解全部话题");
+    const analysis = await analyzeWithDeepSeek(doc.rawText || "", {
+      signal: state.analysisAbortController.signal,
+      skill,
+    });
+    setAnalysisProgress("解析结果", 82, "模型已返回，正在保存新版 SKILL 的话题内容。");
+    setSkillNotice("82% · 模型已返回，正在保存新版 SKILL 的话题内容。", "info");
+    setSkillRefreshProgress(doc.id, 82, "正在保存新版话题内容");
+    const historicalTopicCodes = Object.values(docSkillAnalyses(doc))
+      .flatMap((item) => item?.topics || [])
+      .map((topic) => topic.topicCode)
+      .filter(Boolean);
+    const codedAnalysis = preserveTopicFavorites(doc, withSkillMetadata(assignTopicCodesToAnalysis(analysis, doc.id, historicalTopicCodes), skill));
+    const updated = {
+      ...doc,
+      analysis: codedAnalysis,
+      skillAnalyses: {
+        ...docSkillAnalyses(doc),
+        [skill.version]: codedAnalysis,
+      },
+      currentSkillVersion: skill.version,
+      currentSkillName: skill.name,
+      currentSkillAppliedAt: now,
+      tags: codedAnalysis.suggestedTags || doc.tags || [],
+      updatedAt: now,
+      lastStudiedAt: now,
+    };
+    await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+    await logEvent("refresh_topic_skill", { docId: doc.id, title: doc.title, skillVersion: skill.version });
+    await loadDocuments();
+    state.activeMaterialDocId = doc.id;
+    state.activeMaterialTopicIndex = 0;
+    state.activeMaterialSkillVersion = skill.version;
+    setSkillRefreshProgress(doc.id, 100, "刷新完成");
+    setAnalysisProgress("完成", 100, `已使用话题 SKILL ${skill.version} 完成刷新。`);
+    setSkillNotice(`已使用话题 SKILL ${skill.version} 重新分析完成。`, "success");
+  } catch (error) {
+    const stopped = /已停止|aborted|abort/i.test(String(error.message || ""));
+    setAnalysisProgress(stopped ? "已停止" : "失败", stopped ? 0 : 0, stopped ? "已停止本次 SKILL 刷新。" : `SKILL 刷新失败：${error.message}`);
+    setSkillNotice(stopped ? "已停止本次 SKILL 刷新。" : `SKILL 刷新失败：${error.message}`, "error");
+  } finally {
+    state.isAnalyzing = false;
+    state.analysisAbortController = null;
+    state.skillRefreshState = { docId: "", percent: 0, message: "" };
+    renderMaterialOverviewPage();
+    updateUploadButtons();
+  }
+}
+
+function materialTopicRow(doc, topic, index) {
+  const tags = [
+    ...(Array.isArray(topic.problemTypes) ? topic.problemTypes : []),
+    ...(doc.tags || []),
+  ].filter(Boolean);
+  const favorite = Boolean(topic.favorite);
+  return {
+    id: `${doc.id}::${index}`,
+    docId: doc.id,
+    docTitle: doc.title,
+    doc,
+    topic,
+    topicIndex: index,
+    displayIndex: topic.topicCode || topicCodeFromNumber(index + 1),
+    title: topic.title || `话题${index + 1}`,
+    tags: [...new Set(tags)].slice(0, 5),
+    type: materialTypeNameForDoc(doc),
+    source: materialSourceNameForDoc(doc),
+    ownerEmail: doc.ownerEmail || "",
+    ownerEmailKey: doc.ownerEmailKey || "",
+    favorite,
+    updatedAt: doc.lastStudiedAt || doc.updatedAt || doc.createdAt,
+  };
+}
+
+function materialSkillDisplay(doc) {
+  const typeName = doc?.analysis?.targetMaterialTypeName || materialTypeNameForDoc(doc) || "高层视角";
+  const skillName = skillNameForMaterialTypeName(typeName);
+  const version = doc?.currentSkillVersion || doc?.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  return `${skillName} ${version}`;
+}
+
+function skillShortDisplay(skill) {
+  if (!skill) {
+    return "最新版本";
+  }
+  const typeName = String(skill.targetMaterialTypeName || skill.name || "话题 SKILL")
+    .replace(/话题拆解\s*SKILL$/i, "")
+    .trim();
+  return `${typeName || "话题"} ${skill.version || ""}`.trim();
+}
+
+function favoriteIcon(active) {
+  return active ? "♥" : "♡";
+}
+
+async function updateDocumentFavorite(docId, favorite) {
+  const doc = state.allDocuments.find((item) => item.id === docId);
+  if (!doc || doc.deletedAt || (!isAdmin() && (doc.ownerEmailKey || "") !== state.currentUser?.emailKey)) {
+    return;
+  }
+  const updated = { ...doc, favorite: Boolean(favorite), favoriteAt: favorite ? new Date().toISOString() : "", updatedAt: new Date().toISOString() };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await loadDocuments();
+}
+
+async function updateTopicFavorite(docId, topicIndex, favorite, version = "") {
+  const doc = state.allDocuments.find((item) => item.id === docId);
+  if (!doc || doc.deletedAt || (!isAdmin() && (doc.ownerEmailKey || "") !== state.currentUser?.emailKey)) {
+    return;
+  }
+  const skillVersion = version || doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  const analyses = docSkillAnalyses(doc);
+  const targetAnalysis = analyses[skillVersion] || doc.analysis;
+  if (!targetAnalysis?.topics?.[topicIndex]) {
+    return;
+  }
+  const updatedAnalysis = {
+    ...targetAnalysis,
+    topics: targetAnalysis.topics.map((topic, index) => (
+      index === Number(topicIndex) ? { ...topic, favorite: Boolean(favorite), favoriteAt: favorite ? new Date().toISOString() : "" } : topic
+    )),
+  };
+  const updatedSkillAnalyses = { ...analyses, [skillVersion]: updatedAnalysis };
+  const currentVersion = doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  const updated = {
+    ...doc,
+    analysis: skillVersion === currentVersion ? updatedAnalysis : doc.analysis,
+    skillAnalyses: updatedSkillAnalyses,
+    updatedAt: new Date().toISOString(),
+  };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await loadDocuments();
+}
+
+function renderMaterialOverviewPage() {
+  if (!els.materialOverviewPage) {
+    return;
+  }
+  const docs = materialDocsForInsight();
+  const activeDocs = (isAdmin() ? state.allDocuments : state.documents).filter((doc) => !doc.deletedAt && doc.analysis?.topics?.length);
+  const sourceItems = [...state.materialSources];
+  const typeItems = [...state.materialTypes];
+  activeDocs.forEach((doc) => {
+    const source = materialSourceForDoc(doc);
+    if (source && !sourceItems.some((item) => item.id === source.id)) {
+      sourceItems.push(source);
+    }
+    const type = materialTypeForDoc(doc);
+    if (type && !typeItems.some((item) => item.id === type.id)) {
+      typeItems.push(type);
+    }
+  });
+
+  if (!docs.some((doc) => doc.id === state.activeMaterialDocId)) {
+    state.activeMaterialDocId = docs[0]?.id || "";
+    state.activeMaterialTopicIndex = 0;
+  }
+  const activeDoc = docs.find((doc) => doc.id === state.activeMaterialDocId);
+  const skillVersions = activeDoc ? docSkillVersions(activeDoc) : [];
+  const preferredSkillVersion = activeDoc?.currentSkillVersion || activeDoc?.analysis?.skillVersion || skillVersions[0]?.version || "";
+  if (activeDoc && !skillVersions.some((item) => item.version === state.activeMaterialSkillVersion)) {
+    state.activeMaterialSkillVersion = preferredSkillVersion;
+  }
+  const activeSkillVersion = state.activeMaterialSkillVersion || preferredSkillVersion;
+  const activeAnalysis = activeDoc ? docAnalysisForSkill(activeDoc, activeSkillVersion) : null;
+  const activeSkillMeta = skillVersions.find((item) => item.version === activeSkillVersion);
+  const topics = activeAnalysis?.topics || [];
+  if (state.activeMaterialTopicIndex >= topics.length) {
+    state.activeMaterialTopicIndex = 0;
+  }
+  const isMeetingNotes = activeDoc ? materialTypeNameForDoc(activeDoc) === "会议纪要" || Boolean(activeAnalysis?.meetingAnalysis) : false;
+  const activeMaterialPane = isMeetingNotes
+    ? (["meeting", "source", "topics"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
+    : (state.activeMaterialPane === "topics" ? "topics" : "source");
+  const activeTopic = activeDoc ? topics[state.activeMaterialTopicIndex] : null;
+  const activeDocForTopic = activeDoc && activeAnalysis ? { ...activeDoc, analysis: activeAnalysis } : activeDoc;
+  const row = activeDocForTopic && activeTopic ? materialTopicRow(activeDocForTopic, activeTopic, state.activeMaterialTopicIndex) : null;
+  const adminOwnerFilter = isAdmin()
+    ? `<input class="text-input" id="materialListOwnerFilter" list="materialListOwnerOptions" type="search" placeholder="筛选用户邮箱" value="${escapeHtml(state.materialListOwnerFilter)}" />
+       <datalist id="materialListOwnerOptions">${state.users.map((user) => `<option value="${escapeHtml(user.email)}"></option>`).join("")}</datalist>`
+    : "";
+  els.materialOverviewPage.innerHTML = `
+    ${state.skillNotice.message ? `<p class="category-notice material-skill-notice" data-tone="${escapeHtml(state.skillNotice.tone || "info")}">${escapeHtml(state.skillNotice.message)}</p>` : ""}
+    <div class="material-list-filters">
+      <button class="favorite-filter-btn" type="button" data-material-favorite-filter data-active="${state.materialFavoriteOnly ? "true" : "false"}" aria-pressed="${state.materialFavoriteOnly ? "true" : "false"}" title="只看收藏">
+        <span class="favorite-filter-icon" aria-hidden="true">${state.materialFavoriteOnly ? "♥" : "♡"}</span>
+        <span class="favorite-filter-text">${state.materialFavoriteOnly ? "已收藏" : "收藏"}</span>
+      </button>
+      <input class="text-input" id="materialListSearch" type="search" placeholder="搜索材料标题 / 标签 / 来源" value="${escapeHtml(state.materialListSearch)}" />
+      <select class="text-input" id="materialListSourceFilter">
+        <option value="">全部资料来源</option>
+        ${sourceItems.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === state.materialListSourceFilter ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+      </select>
+      <select class="text-input" id="materialListTypeFilter">
+        <option value="">全部资料类型</option>
+        ${typeItems.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === state.materialListTypeFilter ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+      </select>
+      ${adminOwnerFilter}
+    </div>
+    <div class="material-overview-layout">
+      <aside class="material-card-list" aria-label="材料列表">
+        ${docs.length ? docs.map((doc) => {
+          const refreshState = state.skillRefreshState.docId === doc.id ? state.skillRefreshState : null;
+          const hasNewSkill = hasNewTopicSkill(doc);
+          const latestSkill = hasNewSkill ? currentTopicSkill(materialTypeIdForDoc(doc) || "type-executive-view") : null;
+          const materialKeyword = state.materialListSearch.trim();
+          const searchSnippet = materialSearchSnippet(doc, materialKeyword);
+          return `
+            <article class="material-card${doc.id === state.activeMaterialDocId ? " is-active" : ""}">
+              <div class="material-card-head">
+                <button class="material-card-main" type="button" data-material-card="${escapeHtml(doc.id)}">
+                  <span class="material-card-title-row"><span class="material-card-code">${escapeHtml(materialDisplayCode(doc))}</span><strong>${highlightSearchTerm(doc.title || doc.fileName, materialKeyword)}</strong></span>
+                  <span>分类：${highlightSearchTerm(materialSourceNameForDoc(doc), materialKeyword)} / ${highlightSearchTerm(materialTypeNameForDoc(doc), materialKeyword)}</span>
+                  <em>标签：${highlightSearchTerm((doc.tags || []).length ? (doc.tags || []).slice(0, 4).join(" / ") : "未打标签", materialKeyword)}</em>
+                  ${searchSnippet ? `<small class="material-search-snippet">${highlightSearchTerm(searchSnippet, materialKeyword)}</small>` : ""}
+                  <small>${escapeHtml(formatDate(doc.lastStudiedAt || doc.updatedAt || doc.createdAt))} · ${escapeHtml(String(doc.analysis?.topics?.length || 0))} 个话题 · ${escapeHtml(materialSkillDisplay(doc))}</small>
+                  ${isAdmin() && doc.ownerEmail ? `<em>${escapeHtml(doc.ownerEmail)}</em>` : ""}
+                </button>
+                <button class="favorite-toggle material-favorite-toggle${doc.favorite ? " is-active" : ""}" type="button" data-material-favorite="${escapeHtml(doc.id)}" aria-label="${doc.favorite ? "取消收藏材料" : "收藏材料"}" title="${doc.favorite ? "取消收藏材料" : "收藏材料"}"><span aria-hidden="true">${favoriteIcon(doc.favorite)}</span></button>
+              </div>
+              ${hasNewSkill ? `
+                <div class="material-skill-actions">
+                  <button class="material-skill-refresh" type="button" data-skill-refresh="${escapeHtml(doc.id)}" ${state.isAnalyzing ? "disabled" : ""}>SKILL 刷新</button>
+                  <button class="material-skill-diff-link" type="button" data-skill-diff="${escapeHtml(doc.id)}">查看新版差异</button>
+                  <span class="material-skill-new-version">最新：${escapeHtml(skillShortDisplay(latestSkill))}</span>
+                </div>
+              ` : ""}
+              ${refreshState ? `
+                <div class="material-refresh-progress">
+                  <div><span style="width:${Math.max(0, Math.min(100, Number(refreshState.percent || 0)))}%"></span></div>
+                  <small>${escapeHtml(refreshState.message || "正在刷新")} · ${escapeHtml(String(refreshState.percent || 0))}%</small>
+                </div>
+              ` : ""}
+            </article>
+          `;
+        }).join("") : `<p class="empty-state compact">还没有匹配的已分析材料。</p>`}
+      </aside>
+      <section class="material-topic-panel">
+        ${activeDoc ? `
+          <div class="material-topic-header">
+            <div>
+              <p class="section-kicker">Material Topics</p>
+              <h3><span>${escapeHtml(materialDisplayCode(activeDoc))}</span>${escapeHtml(activeDoc.title || activeDoc.fileName)}</h3>
+            </div>
+            <button class="mini-button" type="button" data-open-source-topics="${escapeHtml(activeDoc.id)}">只看这份材料的话题列表</button>
+          </div>
+          <div class="topic-meta source-meta">
+            <span class="pill">材料编号：${escapeHtml(materialDisplayCode(activeDoc))}</span>
+            <span class="pill">资料来源：${escapeHtml(materialSourceNameForDoc(activeDoc))}</span>
+            <span class="pill">材料类型：${escapeHtml(materialTypeNameForDoc(activeDoc))}</span>
+            <span class="pill">最后更新：${escapeHtml(formatDate(activeDoc.lastStudiedAt || activeDoc.updatedAt || activeDoc.createdAt))}</span>
+            <span class="pill">最后 SKILL：${escapeHtml(materialSkillDisplay(activeDoc))}</span>
+            <span class="pill">${activeDoc.favorite ? "已收藏材料" : "未收藏材料"}</span>
+            ${isAdmin() && activeDoc.ownerEmail ? `<span class="pill">用户：${escapeHtml(activeDoc.ownerEmail)}</span>` : ""}
+          </div>
+          <div class="material-skill-switch">
+            <label>
+              <span>查看 SKILL 版本</span>
+              <select class="text-input" id="materialSkillVersionSelect">
+                ${skillVersions.map((item) => `<option value="${escapeHtml(item.version)}" ${item.version === activeSkillVersion ? "selected" : ""}>${escapeHtml(item.version)} · ${escapeHtml(item.skill?.skillFileName || item.skill?.name || "话题拆解 SKILL.md")}</option>`).join("")}
+              </select>
+            </label>
+            <small>${activeSkillMeta ? `应用时间：${escapeHtml(formatDate(activeSkillMeta.appliedAt))}` : ""}</small>
+          </div>
+          <div class="topic-detail-tabs-row material-detail-tabs-row">
+            <div class="topic-detail-tabs" role="tablist" aria-label="材料学习内容">
+              ${isMeetingNotes ? `<button class="topic-detail-tab${activeMaterialPane === "meeting" ? " is-active" : ""}" type="button" data-material-pane="meeting">会议纪要分析</button>` : ""}
+              <button class="topic-detail-tab${activeMaterialPane === "source" ? " is-active" : ""}" type="button" data-material-pane="source">资料原文</button>
+              <button class="topic-detail-tab${activeMaterialPane === "topics" ? " is-active" : ""}" type="button" data-material-pane="topics">话题内容</button>
+            </div>
+          </div>
+          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : `
+            <div class="material-topic-nav">
+              ${topics.map((topic, index) => `
+                <button class="${index === state.activeMaterialTopicIndex ? "is-active" : ""}" type="button" data-material-topic="${index}">
+                  <strong>${escapeHtml(topic.title || `话题${index + 1}`)}</strong>
+                  ${topic.favorite ? `<span class="topic-favorite-mark" aria-hidden="true">♥</span>` : ""}
+                </button>
+              `).join("")}
+            </div>
+            <article class="topic-article material-topic-article">
+              ${row ? buildTopicArticleHtml(activeTopic, row) : `<p class="empty-state compact">${isMeetingNotes ? "这份会议纪要没有强行提炼话题，可先查看会议纪要分析。" : "这份材料没有可展示的话题。"}</p>`}
+            </article>
+          `}
+        ` : `<p class="empty-state">还没有已分析材料。点击顶部“材料上传分析”先上传并执行分析。</p>`}
+      </section>
+    </div>
+  `;
+
+  const materialSearchInput = els.materialOverviewPage.querySelector("#materialListSearch");
+  materialSearchInput?.addEventListener("compositionstart", () => {
+    state.materialSearchComposing = true;
+  });
+  materialSearchInput?.addEventListener("compositionend", (event) => {
+    state.materialSearchComposing = false;
+    state.materialListSearch = event.target.value;
+    if (state.activeMaterialPane === "source") {
+      state.activeOriginalKeyword = event.target.value.trim();
+    }
+    renderMaterialOverviewPage();
+  });
+  materialSearchInput?.addEventListener("input", (event) => {
+    const input = event.currentTarget;
+    state.materialListSearch = event.target.value;
+    if (state.activeMaterialPane === "source") {
+      state.activeOriginalKeyword = event.target.value.trim();
+    }
+    if (event.isComposing || state.materialSearchComposing) {
+      return;
+    }
+    const shouldRestoreFocus = document.activeElement === input;
+    const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : null;
+    const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : null;
+    renderMaterialOverviewPage();
+    if (shouldRestoreFocus) {
+      const nextInput = els.materialOverviewPage.querySelector("#materialListSearch");
+      if (nextInput) {
+        nextInput.focus({ preventScroll: true });
+        if (selectionStart !== null && selectionEnd !== null && nextInput.setSelectionRange) {
+          try {
+            nextInput.setSelectionRange(selectionStart, selectionEnd);
+          } catch {
+            nextInput.focus({ preventScroll: true });
+          }
+        }
+      }
+    }
+  });
+  els.materialOverviewPage.querySelector("#materialListSourceFilter")?.addEventListener("change", (event) => {
+    state.materialListSourceFilter = event.target.value;
+    renderMaterialOverviewPage();
+  });
+  els.materialOverviewPage.querySelector("#materialListTypeFilter")?.addEventListener("change", (event) => {
+    state.materialListTypeFilter = event.target.value;
+    renderMaterialOverviewPage();
+  });
+  els.materialOverviewPage.querySelector("#materialListOwnerFilter")?.addEventListener("input", (event) => {
+    state.materialListOwnerFilter = event.target.value;
+    renderMaterialOverviewPage();
+  });
+  els.materialOverviewPage.querySelector("[data-material-favorite-filter]")?.addEventListener("click", () => {
+    state.materialFavoriteOnly = !state.materialFavoriteOnly;
+    renderMaterialOverviewPage();
+  });
+  els.materialOverviewPage.querySelectorAll("[data-material-favorite]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const doc = state.allDocuments.find((item) => item.id === button.dataset.materialFavorite);
+      await updateDocumentFavorite(button.dataset.materialFavorite, !doc?.favorite);
+    });
+  });
+  els.materialOverviewPage.querySelectorAll("[data-material-card]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeMaterialDocId = button.dataset.materialCard;
+      state.activeMaterialTopicIndex = 0;
+      state.activeMaterialSkillVersion = "";
+      const selectedDoc = docs.find((doc) => doc.id === button.dataset.materialCard);
+      state.activeMaterialPane = selectedDoc && (materialTypeNameForDoc(selectedDoc) === "会议纪要" || selectedDoc.analysis?.meetingAnalysis) ? "meeting" : "source";
+      state.activeOriginalKeyword = state.materialListSearch.trim();
+      renderMaterialOverviewPage();
+    });
+  });
+  els.materialOverviewPage.querySelectorAll("[data-skill-refresh]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      refreshMaterialWithLatestSkill(button.dataset.skillRefresh);
+    });
+  });
+  els.materialOverviewPage.querySelectorAll("[data-skill-diff]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      showSkillDiffModal(button.dataset.skillDiff);
+    });
+  });
+  els.materialOverviewPage.querySelector("#materialSkillVersionSelect")?.addEventListener("change", (event) => {
+    state.activeMaterialSkillVersion = event.target.value;
+    state.activeMaterialTopicIndex = 0;
+    state.activeMaterialPane = "topics";
+    renderMaterialOverviewPage();
+  });
+  els.materialOverviewPage.querySelectorAll("[data-material-pane]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeMaterialPane = button.dataset.materialPane;
+      if (button.dataset.materialPane === "source" && !state.activeOriginalKeyword) {
+        state.activeOriginalKeyword = state.materialListSearch.trim();
+      }
+      renderMaterialOverviewPage();
+    });
+  });
+  els.materialOverviewPage.querySelectorAll("[data-material-topic]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeMaterialTopicIndex = Number(button.dataset.materialTopic || 0);
+      state.activeMaterialPane = "topics";
+      renderMaterialOverviewPage();
+    });
+  });
+  els.materialOverviewPage.querySelector("[data-open-source-topics]")?.addEventListener("click", (event) => {
+    openSourceTopics(event.currentTarget.dataset.openSourceTopics);
+  });
+  els.materialOverviewPage.querySelectorAll("[data-topic-favorite-doc]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const doc = state.allDocuments.find((item) => item.id === button.dataset.topicFavoriteDoc);
+      const version = button.dataset.topicFavoriteVersion || activeSkillVersion;
+      const analysis = doc ? docAnalysisForSkill(doc, version) : null;
+      const topic = analysis?.topics?.[Number(button.dataset.topicFavoriteIndex)];
+      await updateTopicFavorite(button.dataset.topicFavoriteDoc, Number(button.dataset.topicFavoriteIndex), !topic?.favorite, version);
+    });
+  });
+}
+
+function renderTopicHome() {
+  if (!els.topicHomeList || !els.topicHomeArticle) {
+    return;
+  }
+  if (els.topicFavoriteFilter) {
+    els.topicFavoriteFilter.dataset.active = String(state.topicFavoriteOnly);
+    els.topicFavoriteFilter.setAttribute("aria-pressed", String(state.topicFavoriteOnly));
+    const icon = els.topicFavoriteFilter.querySelector(".favorite-filter-icon");
+    const text = els.topicFavoriteFilter.querySelector(".favorite-filter-text");
+    if (icon) icon.textContent = state.topicFavoriteOnly ? "♥" : "♡";
+    if (text) text.textContent = state.topicFavoriteOnly ? "已收藏" : "收藏";
+  }
+  const keyword = state.topicSearch.trim().toLowerCase();
+  const rows = buildTopicRows().filter((row) => {
+    const sourceMatch = !state.topicSourceFilter || materialSourceIdForDoc(row.doc) === state.topicSourceFilter;
+    const typeMatch = !state.topicTypeFilter || materialTypeIdForDoc(row.doc) === state.topicTypeFilter;
+    const docMatch = !state.topicDocFilter || row.docId === state.topicDocFilter;
+    const ownerKeyword = String(state.topicOwnerFilter || "").trim().toLowerCase();
+    const ownerMatch = !isAdmin() || !ownerKeyword || `${row.ownerEmail} ${row.ownerEmailKey}`.toLowerCase().includes(ownerKeyword);
+    const favoriteMatch = !state.topicFavoriteOnly || row.favorite;
+    const text = topicSearchText(row).toLowerCase();
+    return sourceMatch && typeMatch && docMatch && ownerMatch && favoriteMatch && (!keyword || text.includes(keyword));
+  });
+  const pageSize = Number(state.topicPageSize || 20);
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  state.topicPage = Math.min(Math.max(1, Number(state.topicPage || 1)), totalPages);
+  const startIndex = (state.topicPage - 1) * pageSize;
+  const visibleRows = rows.slice(startIndex, startIndex + pageSize);
+  els.topicHomeList.classList.toggle("is-scrollable", visibleRows.length > 20);
+  const selectedRow = visibleRows.find((row) => row.id === state.activeTopicRef) || visibleRows[0];
+  state.activeTopicRef = selectedRow?.id || null;
+  const pager = `
+    <div class="topic-list-pager">
+      <span>共 ${escapeHtml(String(rows.length))} 个话题</span>
+      <label>每页
+        <select class="text-input" data-topic-page-size>
+          ${[10, 20, 30, 50].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}
+        </select>
+      </label>
+      <button class="mini-button" type="button" data-topic-page="prev" ${state.topicPage <= 1 ? "disabled" : ""}>上一页</button>
+      <strong>${escapeHtml(String(state.topicPage))} / ${escapeHtml(String(totalPages))}</strong>
+      <button class="mini-button" type="button" data-topic-page="next" ${state.topicPage >= totalPages ? "disabled" : ""}>下一页</button>
+    </div>
+  `;
+  els.topicHomeList.innerHTML = rows.length
+    ? `${pager}${visibleRows.map((row) => `
+      <article class="topic-home-card${row.id === state.activeTopicRef ? " is-active" : ""}" data-topic-card="${escapeHtml(row.id)}" tabindex="0">
+        <button class="favorite-toggle topic-card-favorite${row.favorite ? " is-active" : ""}" type="button" data-topic-card-favorite="${escapeHtml(row.id)}" aria-label="${row.favorite ? "取消收藏话题" : "收藏话题"}" title="${row.favorite ? "取消收藏话题" : "收藏话题"}"><span aria-hidden="true">${favoriteIcon(row.favorite)}</span></button>
+        <div class="topic-home-card-main">
+          <span class="topic-home-title-row">
+            <span class="topic-home-index">${escapeHtml(row.displayIndex)}</span>
+            <strong>
+              <span>${highlightSearchTerm(row.title, state.topicSearch)}</span><time class="topic-home-time-inline">${escapeHtml(formatDate(row.updatedAt))}</time>
+            </strong>
+          </span>
+        </div>
+        <div class="topic-home-tags">
+          ${row.tags.length ? row.tags.map((tag) => `<span class="topic-tag">${highlightSearchTerm(tag, state.topicSearch)}</span>`).join("") : `<span class="muted-text">未打标签</span>`}
+          ${isAdmin() && row.ownerEmail ? `<span class="topic-tag owner-tag">${highlightSearchTerm(row.ownerEmail, state.topicSearch)}</span>` : ""}
+        </div>
+        <div class="topic-home-skill" title="分析 SKILL：${escapeHtml(row.skillDisplay)}">
+          <span>分析 SKILL：</span>${highlightSearchTerm(row.skillDisplay, state.topicSearch)}
+        </div>
+        <button class="topic-home-source" type="button" data-topic-source="${escapeHtml(row.id)}" title="话题来源：${escapeHtml(row.source)} · ${escapeHtml(row.docTitle)}">
+          <span>话题来源：</span>${highlightSearchTerm(`${row.source} · ${row.docTitle}`, state.topicSearch)}
+        </button>
+      </article>
+    `).join("")}`
+    : `<p class="empty-state compact">还没有匹配的话题。</p>`;
+
+  els.topicHomeList.querySelector("[data-topic-page-size]")?.addEventListener("change", (event) => {
+    state.topicPageSize = Number(event.target.value || 20);
+    state.topicPage = 1;
+    renderTopicHome();
+  });
+  els.topicHomeList.querySelectorAll("[data-topic-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.topicPage += button.dataset.topicPage === "next" ? 1 : -1;
+      renderTopicHome();
+    });
+  });
+
+  els.topicHomeList.querySelectorAll("[data-topic-card]").forEach((card) => {
+    card.addEventListener("click", () => selectTopicHomeRow(card.dataset.topicCard, "analysis"));
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectTopicHomeRow(card.dataset.topicCard, "analysis");
+      }
+    });
+  });
+  els.topicHomeList.querySelectorAll("[data-topic-source]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectTopicHomeRow(button.dataset.topicSource, "source");
+    });
+  });
+  els.topicHomeList.querySelectorAll("[data-topic-card-favorite]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const row = rows.find((item) => item.id === button.dataset.topicCardFavorite);
+      if (row) {
+        await updateTopicFavorite(row.docId, row.topicIndex, !row.favorite, row.doc?.analysis?.skillVersion || row.doc?.currentSkillVersion || "");
+      }
+    });
+  });
+  renderTopicHomeArticle(selectedRow);
+}
+
+function selectTopicHomeRow(rowId, pane = "analysis") {
+  state.activeTopicRef = rowId;
+  state.activeTopicPane = pane;
+  renderTopicHome();
+}
+
+function renderTopicHomeArticle(row) {
+  if (!els.topicHomeArticle) {
+    return;
+  }
+  if (!row) {
+    els.topicHomeArticle.innerHTML = `<p class="empty-state">还没有可学习的话题。点击顶部“材料上传分析”先上传材料。</p>`;
+    return;
+  }
+  const activePane = state.activeTopicPane === "analysis" ? "analysis" : "source";
+  els.topicHomeArticle.innerHTML = `
+    <div class="topic-detail-tabs-row">
+      <div class="topic-detail-tabs" role="tablist" aria-label="话题学习内容">
+        <button class="topic-detail-tab${activePane === "source" ? " is-active" : ""}" type="button" data-topic-pane="source">资料原文</button>
+        <button class="topic-detail-tab${activePane === "analysis" ? " is-active" : ""}" type="button" data-topic-pane="analysis">话题解析</button>
+      </div>
+    </div>
+    <div class="topic-detail-pane">
+      ${activePane === "source" ? buildTopicSourceHtml(row, { includeTopicPanel: false }) : buildTopicArticleHtml(row.topic, row)}
+    </div>
+  `;
+  els.topicHomeArticle.querySelectorAll("[data-topic-pane]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeTopicPane = button.dataset.topicPane;
+      state.activeOriginalKeyword = "";
+      renderTopicHomeArticle(row);
+    });
+  });
+  els.topicHomeArticle.querySelectorAll("[data-original-keyword]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const keyword = button.dataset.originalKeyword;
+      state.activeOriginalKeyword = state.activeOriginalKeyword === keyword ? "" : keyword;
+      renderTopicHomeArticle(row);
+    });
+  });
+  els.topicHomeArticle.querySelectorAll("[data-topic-favorite-doc]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const doc = state.allDocuments.find((item) => item.id === button.dataset.topicFavoriteDoc);
+      const version = button.dataset.topicFavoriteVersion || doc?.currentSkillVersion || doc?.analysis?.skillVersion || "";
+      const analysis = doc ? docAnalysisForSkill(doc, version) : null;
+      const topic = analysis?.topics?.[Number(button.dataset.topicFavoriteIndex)];
+      await updateTopicFavorite(button.dataset.topicFavoriteDoc, Number(button.dataset.topicFavoriteIndex), !topic?.favorite, version);
+    });
+  });
+}
+
+function buildTopicSourceHtml(row, options = {}) {
+  const paragraphs = formatOriginalParagraphs(row.doc.rawText || "");
+  const keywords = extractTopOriginalKeywords(row);
+  const activeKeyword = state.activeOriginalKeyword;
+  const keywordHtml = keywords.length
+    ? `<div class="original-keywords">${keywords.map((keyword) => `
+        <button class="original-keyword${activeKeyword === keyword ? " is-active" : ""}" type="button" data-original-keyword="${escapeHtml(keyword)}">${escapeHtml(keyword)}</button>
+      `).join("")}</div>`
+    : "";
+  const body = paragraphs.length
+    ? paragraphs.map((paragraph) => renderOriginalParagraph(paragraph, activeKeyword)).join("")
+    : `<p class="empty-state compact">这篇资料暂时没有可展示的原文。</p>`;
+  return `
+    <section class="topic-original">
+      <h2>${escapeHtml(row.docTitle || row.doc.title || "资料原文")}</h2>
+      ${keywordHtml}
+      <div class="topic-meta source-meta">
+        <span class="pill">资料来源：${escapeHtml(row.source)}</span>
+        <span class="pill">资料类型：${escapeHtml(row.type)}</span>
+        <span class="pill">最后更新：${escapeHtml(formatDate(row.updatedAt))}</span>
+      </div>
+      <div class="topic-original-body">${body}</div>
+      ${options.includeTopicPanel ? `<div class="topic-original-topic-panel">${buildTopicArticleHtml(row.topic, row)}</div>` : ""}
+    </section>
+  `;
+}
+
+function buildMaterialOriginalHtml(doc) {
+  const paragraphs = formatOriginalParagraphs(doc.rawText || "");
+  const keywords = extractTopMaterialKeywords(doc);
+  const activeKeyword = state.activeOriginalKeyword || state.materialListSearch.trim();
+  const keywordHtml = keywords.length
+    ? `<div class="original-keywords">${keywords.map((keyword) => `
+        <button class="original-keyword${activeKeyword === keyword ? " is-active" : ""}" type="button" data-original-keyword="${escapeHtml(keyword)}">${escapeHtml(keyword)}</button>
+      `).join("")}</div>`
+    : "";
+  const body = paragraphs.length
+    ? paragraphs.map((paragraph) => renderOriginalParagraph(paragraph, activeKeyword)).join("")
+    : `<p class="empty-state compact">这篇材料暂时没有可展示的原文。</p>`;
+  return `
+    <section class="topic-original material-original-panel">
+      <h2>${escapeHtml(doc.title || doc.fileName || "材料原文")}</h2>
+      ${keywordHtml}
+      <div class="topic-meta source-meta">
+        <span class="pill">材料编号：${escapeHtml(materialDisplayCode(doc))}</span>
+        <span class="pill">资料来源：${escapeHtml(materialSourceNameForDoc(doc))}</span>
+        <span class="pill">材料类型：${escapeHtml(materialTypeNameForDoc(doc))}</span>
+        <span class="pill">最后更新：${escapeHtml(formatDate(doc.lastStudiedAt || doc.updatedAt || doc.createdAt))}</span>
+      </div>
+      <div class="topic-original-body">${body}</div>
+    </section>
+  `;
+}
+
+function buildMeetingAnalysisHtml(meetingAnalysis) {
+  if (!meetingAnalysis) {
+    return `<p class="empty-state compact">这份材料没有提炼出会议纪要分析内容。</p>`;
+  }
+  const info = meetingAnalysis.meetingInfo || {};
+  const cellText = (value) => {
+    if (Array.isArray(value)) {
+      return value.map(cellText).filter(Boolean).join("；");
+    }
+    if (value && typeof value === "object") {
+      return Object.entries(value)
+        .map(([key, item]) => `${key}：${cellText(item)}`)
+        .filter(Boolean)
+        .join("；");
+    }
+    return String(value || "").trim();
+  };
+  const joinList = (items) => (Array.isArray(items) && items.length ? items.map(cellText).filter(Boolean).join("；") : "");
+  const tableRows = (rows, cols) => rows.length
+    ? `<table class="meeting-mini-table"><thead><tr>${cols.map((col) => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cellText(cell) || "未提及")}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+    : `<p class="muted-text">未提及</p>`;
+  return `
+    <section class="meeting-analysis">
+      <article class="article-section meeting-section meeting-section-info">
+        <h3>会议基础信息</h3>
+        <div class="meeting-info-grid">
+          <p><strong>会议主题：</strong>${escapeHtml(info.topic || "未提及")}</p>
+          <p><strong>会议目标：</strong>${escapeHtml(info.goal || "未提及")}</p>
+          <p><strong>会议时间：</strong>${escapeHtml(info.time || "未知")}</p>
+          <p><strong>会议时长：</strong>${escapeHtml(info.duration || "未知")}</p>
+          <p><strong>参会人：</strong>${escapeHtml(joinList(info.participants) || "未提及")}</p>
+          <p><strong>缺席人：</strong>${escapeHtml(joinList(info.absentees) || "未提及")}</p>
+          <p><strong>主持人：</strong>${escapeHtml(info.host || "未提及")}</p>
+          <p><strong>记录人：</strong>${escapeHtml(info.recorder || "未提及")}</p>
+        </div>
+      </article>
+      <article class="article-section meeting-section meeting-section-decisions">
+        <h3>决策清单</h3>
+        ${tableRows((meetingAnalysis.decisions || []).map((item, index) => [String(item.index || index + 1), item.issue, item.decision, item.reason]), ["序号", "议题", "决定内容", "依据/理由"])}
+      </article>
+      <article class="article-section meeting-section meeting-section-actions">
+        <h3>行动项清单</h3>
+        ${tableRows((meetingAnalysis.actionItems || []).map((item, index) => [String(item.index || index + 1), item.action, item.owner, item.deadline, item.source]), ["序号", "行动内容", "负责人", "截止日期", "来源"])}
+      </article>
+      <article class="article-section meeting-section meeting-section-discussion">
+        <h3>议题讨论摘要</h3>
+        ${(meetingAnalysis.discussionSummary || []).length ? meetingAnalysis.discussionSummary.map((item) => `
+          <div class="meeting-sub-block">
+            <h4>${escapeHtml(item.issue || "议题")}</h4>
+            <p><strong>背景：</strong>${escapeHtml(item.background || "未提及")}</p>
+            <p><strong>关键观点：</strong>${escapeHtml(joinList(item.keyViews) || "未提及")}</p>
+            <p><strong>分歧点：</strong>${escapeHtml(item.divergences || "未提及")}</p>
+            <p><strong>结论/走向：</strong>${escapeHtml(item.conclusion || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </article>
+      <article class="article-section meeting-section meeting-section-collaboration">
+        <h3>情感与协作态势</h3>
+        <p><strong>整体氛围：</strong>${escapeHtml(meetingAnalysis.collaboration?.mood || "未提及")}</p>
+        <p><strong>态度分布：</strong>${escapeHtml(joinList(meetingAnalysis.collaboration?.attitudeDistribution) || "未提及")}</p>
+        <p><strong>关键冲突点：</strong>${escapeHtml(joinList(meetingAnalysis.collaboration?.conflictPoints) || "未提及")}</p>
+        <p><strong>虚假同意：</strong>${escapeHtml(joinList(meetingAnalysis.collaboration?.falseConsensus) || "未提及")}</p>
+      </article>
+      <article class="article-section meeting-section meeting-section-risks">
+        <h3>风险与依赖</h3>
+        <p><strong>明确风险：</strong>${escapeHtml(joinList(meetingAnalysis.risksAndDependencies?.explicitRisks) || "未提及")}</p>
+        <p><strong>隐含风险：</strong>${escapeHtml(joinList(meetingAnalysis.risksAndDependencies?.implicitRisks) || "未提及")}</p>
+        <p><strong>外部/跨部门依赖：</strong>${escapeHtml(joinList(meetingAnalysis.risksAndDependencies?.dependencies) || "未提及")}</p>
+        <p><strong>信息缺失：</strong>${escapeHtml(joinList(meetingAnalysis.risksAndDependencies?.missingInfo) || "未提及")}</p>
+      </article>
+      <article class="article-section meeting-section meeting-section-pending">
+        <h3>待定问题</h3>
+        ${(meetingAnalysis.pendingQuestions || []).length ? meetingAnalysis.pendingQuestions.map((item) => `
+          <div class="meeting-sub-block">
+            <p><strong>问题：</strong>${escapeHtml(item.question || "未提及")}</p>
+            <p><strong>当前状态：</strong>${escapeHtml(item.status || "未提及")}</p>
+            <p><strong>跟进建议：</strong>${escapeHtml(item.followUp || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </article>
+      ${meetingAnalysis.topicExtractionNote ? `
+        <article class="article-section meeting-section meeting-section-note">
+          <h3>可提炼话题说明</h3>
+          <p>${escapeHtml(meetingAnalysis.topicExtractionNote)}</p>
+        </article>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderOriginalParagraph(paragraph, keyword = "") {
+  const className = isOriginalHeading(paragraph) ? ` class="original-heading"` : "";
+  const html = keyword ? highlightKeyword(paragraph, keyword) : escapeHtml(paragraph);
+  return `<p${className}>${html}</p>`;
+}
+
+function isOriginalHeading(paragraph) {
+  const text = String(paragraph || "").trim();
+  if (!text || text.length > 80) {
+    return false;
+  }
+  return /^((第[一二三四五六七八九十百]+[章节篇部分])|([一二三四五六七八九十]+[、.．])|（[一二三四五六七八九十]+）|\\([一二三四五六七八九十]+\\)|([0-9]{1,2}[、.．])|（[0-9]{1,2}）|\\([0-9]{1,2}\\))/.test(text);
+}
+
+function highlightKeyword(text, keyword) {
+  if (!keyword) {
+    return escapeHtml(text);
+  }
+  const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(escapedKeyword, "gi");
+  return escapeHtml(text).replace(regex, (match) => `<mark class="original-highlight">${match}</mark>`);
+}
+
+function extractTopOriginalKeywords(row) {
+  const text = row.doc.rawText || "";
+  const candidates = new Set([
+    ...categoryDefs.flatMap((category) => category.keywords),
+    ...(row.doc.tags || []),
+    ...(Array.isArray(row.topic.problemTypes) ? row.topic.problemTypes : []),
+    row.source,
+    row.type,
+  ].filter((item) => String(item || "").trim().length >= 2));
+  return [...candidates]
+    .map((keyword) => {
+      const escapedKeyword = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const count = (text.match(new RegExp(escapedKeyword, "g")) || []).length;
+      return { keyword: String(keyword), count };
+    })
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.keyword.length - b.keyword.length)
+    .slice(0, 5)
+    .map((item) => item.keyword);
+}
+
+function extractTopMaterialKeywords(doc) {
+  const text = doc.rawText || "";
+  const candidates = new Set([
+    materialDisplayCode(doc),
+    materialSourceNameForDoc(doc),
+    materialTypeNameForDoc(doc),
+    doc.title,
+    ...(doc.tags || []),
+  ].filter((item) => String(item || "").trim().length >= 2));
+  return [...candidates]
+    .map((keyword) => {
+      const escapedKeyword = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const count = (text.match(new RegExp(escapedKeyword, "g")) || []).length;
+      return { keyword: String(keyword), count };
+    })
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.keyword.length - b.keyword.length)
+    .slice(0, 5)
+    .map((item) => item.keyword);
+}
+
+function openNewMaterialFlow() {
+  state.topicDocFilter = "";
+  state.topicSearch = "";
+  state.topicSourceFilter = "";
+  state.topicTypeFilter = "";
+  state.topicPage = 1;
+  if (els.topicSearchInput) {
+    els.topicSearchInput.value = "";
+  }
+  if (els.topicSourceFilter) {
+    els.topicSourceFilter.value = "";
+  }
+  if (els.topicTypeFilter) {
+    els.topicTypeFilter.value = "";
+  }
+  switchModule("learning");
+  switchStudyView("upload");
+}
+
+function openTopicFromRow(rowId) {
+  const row = buildTopicRows().find((item) => item.id === rowId);
+  if (!row) {
+    return;
+  }
+  state.activeTopicRef = rowId;
+  state.currentDocId = row.docId;
+  state.fileName = row.doc.fileName || row.doc.title;
+  state.rawText = row.doc.rawText || "";
+  state.analysis = row.doc.analysis || analyzeText(state.rawText);
+  state.activeTopic = row.topicIndex;
+  els.docNameInput.value = row.doc.title || "";
+  els.sourceText.value = state.rawText;
+  setUploadLocked(true);
+  renderAnalysis();
+  switchModule("learning");
+  switchStudyView("analysis");
+}
+
+function openSourceTopics(docId) {
+  const doc = state.documents.find((item) => item.id === docId);
+  if (!doc) {
+    return;
+  }
+  state.topicDocFilter = doc.id;
+  state.topicPage = 1;
+  state.activeTopicRef = null;
+  if (els.topicSearchInput) {
+    els.topicSearchInput.value = "";
+  }
+  state.topicSearch = "";
+  switchModule("learning");
+  switchStudyView("topicsHome");
+  renderTopicHome();
+}
+
+function renderCategories(analysis) {
+  els.categoryBoard.innerHTML = "";
+  const groups = analysis.activeCategories
+    .sort((a, b) => b.items.length - a.items.length)
+    .slice(0, 8);
+
+  if (!groups.length) {
+    els.categoryBoard.innerHTML = `<p class="category-summary-empty">暂未识别到分类。</p>`;
+    return;
+  }
+
+  groups.forEach((group) => {
+    const item = document.createElement("span");
+    item.className = "category-summary-chip";
+    item.innerHTML = `
+      <i style="background:${escapeHtml(group.category.color)}"></i>
+      <strong>${escapeHtml(group.category.name)}</strong>
+      <small>${group.items.length} 条</small>
+    `;
+    els.categoryBoard.appendChild(item);
+  });
+}
+
+function renderTopics(analysis) {
+  els.topicList.innerHTML = "";
+  const template = document.querySelector("#topicButtonTemplate");
+
+  analysis.topics.forEach((topic, index) => {
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.classList.toggle("is-active", index === state.activeTopic);
+    node.querySelector("span").textContent = topic.index;
+    node.querySelector("span").style.background = topic.category.color;
+    node.querySelector("strong").textContent = topic.title;
+    node.querySelector("small").innerHTML = `
+      <em>${escapeHtml(topic.category.name)} · ${"★".repeat(topic.difficulty)}${"☆".repeat(5 - topic.difficulty)}</em>
+      <b>${escapeHtml(topic.sourceSummary || buildTopicSourceSummary(topic.evidence || [], topic.category))}</b>
+    `;
+    node.addEventListener("click", () => {
+      state.activeTopic = index;
+      renderTopics(analysis);
+    });
+    els.topicList.appendChild(node);
+  });
+
+  renderTopicArticle(analysis.topics[state.activeTopic]);
+}
+
+function renderTopicArticle(topic) {
+  if (!topic) {
+    els.topicArticle.innerHTML = `<p class="empty-state">没有识别到足够的话题，请补充更完整的讲话原文。</p>`;
+    return;
+  }
+  els.topicArticle.innerHTML = buildTopicArticleHtml(topic);
+}
+
+function buildTopicArticleHtml(topic, row = null) {
+  const fallbackCategory = topic.category || categoryDefs.find((item) => item.name === topic.categoryName) || categoryDefs[0];
+  const fallbackEvidence = Array.isArray(topic.evidence) ? topic.evidence : [];
+  const problemTypes = normalizeProblemTypes(topic.problemTypes, topic.categoryName, fallbackCategory.name);
+  const deepNature = Array.isArray(topic.deepNature) && topic.deepNature.length ? topic.deepNature : buildDeepNature(fallbackCategory, fallbackEvidence);
+  const ceoSolution = topic.ceoSolution && Object.keys(topic.ceoSolution).length
+    ? topic.ceoSolution
+    : buildCeoSolution(fallbackEvidence, fallbackCategory);
+  const theoryAnchors = topic.theoryAnchors && Object.keys(topic.theoryAnchors).length
+    ? topic.theoryAnchors
+    : buildTheoryAnchors(fallbackCategory, fallbackEvidence);
+  const caseComparison = topic.caseComparison && Object.keys(topic.caseComparison).length
+    ? topic.caseComparison
+    : buildCaseComparison(fallbackCategory);
+  const moreSolutions = Array.isArray(topic.moreSolutions) && topic.moreSolutions.length
+    ? topic.moreSolutions
+    : buildMoreSolutions(fallbackCategory);
+  const transferableInsights = topic.transferableInsights && Object.keys(topic.transferableInsights).length
+    ? topic.transferableInsights
+    : buildTransferableInsights(fallbackCategory, fallbackEvidence);
+
+  const sourceMeta = row
+    ? `
+      <div class="topic-meta source-meta">
+        <span class="pill">话题编号：${escapeHtml(row.displayIndex)}</span>
+        <span class="pill">话题来源：${escapeHtml(row.source)} · ${escapeHtml(row.docTitle)}</span>
+        <span class="pill">最后更新：${escapeHtml(formatDate(row.updatedAt))}</span>
+      </div>
+    `
+    : "";
+
+  return `
+    <div class="topic-article-title-row">
+      <h2>${escapeHtml(topic.title)}</h2>
+      ${row ? `<button class="favorite-toggle topic-favorite-toggle${topic.favorite ? " is-active" : ""}" type="button" data-topic-favorite-doc="${escapeHtml(row.docId)}" data-topic-favorite-index="${escapeHtml(String(row.topicIndex))}" data-topic-favorite-version="${escapeHtml(row.doc?.analysis?.skillVersion || row.doc?.currentSkillVersion || "")}" aria-label="${topic.favorite ? "取消收藏话题" : "收藏话题"}" title="${topic.favorite ? "取消收藏话题" : "收藏话题"}"><span aria-hidden="true">${favoriteIcon(topic.favorite)}</span></button>` : ""}
+    </div>
+    ${sourceMeta}
+    <div class="topic-meta">
+      <span class="pill">难度：${"★".repeat(topic.difficulty)}${"☆".repeat(5 - topic.difficulty)}</span>
+      <span class="pill">问题类型：${escapeHtml(problemTypes.join(" / "))}</span>
+      <span class="pill">文章模板：深度拆解</span>
+    </div>
+    ${articleSourceSection(topic.sourceSummary || buildTopicSourceSummary(fallbackEvidence, fallbackCategory), fallbackEvidence)}
+    ${articleSection("问题实质", topic.problemEssence || topic.essence)}
+    ${articleSection("表面现象", topic.surfacePhenomenon || buildSurfacePhenomenon(fallbackEvidence, fallbackCategory))}
+    ${articleDeepNatureSection(deepNature)}
+    ${articleCeoSolutionSection(ceoSolution)}
+    ${articleTheorySection(theoryAnchors)}
+    ${articleCaseSection(caseComparison)}
+    ${articleMoreSolutionsSection(moreSolutions)}
+    ${articleInsightSection(transferableInsights)}
+  `;
+}
+
+function articleSourceSection(sourceSummary, evidence = []) {
+  const items = evidence.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  return `
+    <section class="article-section source-section">
+      <h3>话题来源</h3>
+      <p>${escapeHtml(sourceSummary || "该话题由原文观点抽取生成。")}</p>
+      ${items ? `<ul>${items}</ul>` : ""}
+    </section>
+  `;
+}
+
+function normalizeProblemTypes(problemTypes, categoryName, fallbackName) {
+  if (Array.isArray(problemTypes) && problemTypes.length) {
+    return [...new Set(problemTypes.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 4);
+  }
+  const names = String(categoryName || fallbackName || "未分类")
+    .split(/[、/,，|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return [...new Set(names.length ? names : [fallbackName || "未分类"])].slice(0, 4);
+}
+
+function articleSection(title, body) {
+  return `
+    <section class="article-section">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(body || "")}</p>
+    </section>
+  `;
+}
+
+function articleSectionHtml(title, html) {
+  return `
+    <section class="article-section">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="article-html">${html}</div>
+    </section>
+  `;
+}
+
+function articleTextListSection(title, items) {
+  const listItems = (items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  return `
+    <section class="article-section">
+      <h3>${escapeHtml(title)}</h3>
+      <ul>${listItems}</ul>
+    </section>
+  `;
+}
+
+function articleDeepNatureSection(items = []) {
+  const cards = items
+    .map(
+      (item) => `
+        <article class="framework-card">
+          <h4>${escapeHtml(item.title || "维度")}</h4>
+          <p>${escapeHtml(item.explanation || "")}</p>
+          <div class="framework-case">
+            <strong>案例</strong>
+            <p>${escapeHtml(item.case || "")}</p>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+  return `
+    <section class="article-section">
+      <h3>深层本质</h3>
+      <div class="framework-grid">${cards}</div>
+    </section>
+  `;
+}
+
+function articleCeoSolutionSection(solution = {}) {
+  return `
+    <section class="article-section">
+      <h3>CEO的解法与关键动作</h3>
+      ${articleSubSection("核心判断", solution.coreJudgment)}
+      ${articleTextListSubSection("验证方法", solution.verificationMethods)}
+      ${articleTextListSubSection("关键行动", solution.keyActions)}
+    </section>
+  `;
+}
+
+function articleTheorySection(theory = {}) {
+  return `
+    <section class="article-section">
+      <h3>底层逻辑（理论锚点）</h3>
+      ${articleTextListSubSection("关联理论 / 模型", theory.linkedTheoryModel)}
+      ${articleTextListSubSection("逻辑拆解", theory.logicDissection)}
+    </section>
+  `;
+}
+
+function articleCaseSection(comparison = {}) {
+  return `
+    <section class="article-section">
+      <h3>案例对照（跨时空验证）</h3>
+      ${articleSubSection("反例", comparison.counterexample)}
+      ${articleSubSection("正例", comparison.positiveExample)}
+      ${articleSubSection("历史类比", comparison.historicalAnalogy)}
+    </section>
+  `;
+}
+
+function articleMoreSolutionsSection(solutions = []) {
+  const cards = solutions
+    .map(
+      (item, index) => `
+        <article class="solution-card">
+          <h4>${escapeHtml(item.title || `解法${index + 1}`)}</h4>
+          <p class="solution-applicability">${escapeHtml(item.applicability || "")}</p>
+          <ol>${(item.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+        </article>
+      `,
+    )
+    .join("");
+  return `
+    <section class="article-section">
+      <h3>更多解法与选择（拓展思维）</h3>
+      <div class="framework-grid">${cards}</div>
+    </section>
+  `;
+}
+
+function articleInsightSection(insights = {}) {
+  return `
+    <section class="article-section">
+      <h3>可迁移的启示</h3>
+      ${articleSubSection("对团队的启示", insights.team)}
+      ${articleSubSection("对读者的行动建议", insights.reader)}
+    </section>
+  `;
+}
+
+function articleSubSection(title, body) {
+  return `
+    <div class="article-subsection">
+      <h4>${escapeHtml(title)}</h4>
+      <p>${escapeHtml(body || "")}</p>
+    </div>
+  `;
+}
+
+function articleTextListSubSection(title, items) {
+  const list = Array.isArray(items) ? items : [];
+  return `
+    <div class="article-subsection">
+      <h4>${escapeHtml(title)}</h4>
+      <ul>${list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>
+  `;
+}
+
+function renderDocumentLibrary() {
+  const allTags = [...new Set(state.documents.flatMap((doc) => doc.tags || []))].sort();
+  els.libraryTags.innerHTML = "";
+  allTags.forEach((tag) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `tag-chip${state.activeTag === tag ? " is-active" : ""}`;
+    button.textContent = tag;
+    button.addEventListener("click", () => {
+      state.activeTag = state.activeTag === tag ? "" : tag;
+      renderDocumentLibrary();
+    });
+    els.libraryTags.appendChild(button);
+  });
+
+  const keyword = state.librarySearch.trim().toLowerCase();
+  const tagKeyword = state.libraryTagSearch.trim().toLowerCase();
+  const filtered = state.documents.filter((doc) => {
+    const tagMatch = !state.activeTag || (doc.tags || []).includes(state.activeTag);
+    const tagKeywordMatch = !tagKeyword || (doc.tags || []).join(" ").toLowerCase().includes(tagKeyword);
+    const categoryMatch =
+      !state.activeDocCategory ||
+      (state.activeDocCategory === "preset-other" ? !doc.categoryId || doc.categoryId === "preset-other" : doc.categoryId === state.activeDocCategory);
+    const searchable = `${doc.title} ${doc.fileName}`.toLowerCase();
+    return tagMatch && tagKeywordMatch && categoryMatch && (!keyword || searchable.includes(keyword));
+  });
+  const visibleDocs = filtered;
+
+  els.documentList.innerHTML = "";
+  if (!visibleDocs.length) {
+    els.documentList.innerHTML = `<p class="empty-state compact">${state.documents.length ? "没有匹配的文档。" : "还没有保存文档。"}</p>`;
+    return;
+  }
+
+  const template = document.querySelector("#documentTemplate");
+  visibleDocs.forEach((doc) => {
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.classList.toggle("is-active", doc.id === state.currentDocId);
+    const main = node.querySelector(".document-main");
+    main.querySelector("strong").textContent = doc.title;
+    const owner = isAdmin() && doc.ownerEmail ? ` · ${doc.ownerEmail}` : "";
+    main.querySelector("small").textContent = `${formatDate(doc.lastStudiedAt || doc.updatedAt)} · ${doc.analysis?.topics?.length || 0} 个话题${owner}`;
+    const tagText = (doc.tags || []).length ? doc.tags.join(" / ") : "未打标签";
+    main.querySelector(".doc-tags").textContent = `${doc.categoryName || "其他"} · ${tagText}`;
+    main.addEventListener("click", () => {
+      loadDocumentIntoWorkspace(doc.id).catch((error) => {
+        els.parseHint.textContent = `打开文档失败：${error.message}`;
+      });
+    });
+    const categorySelect = node.querySelector(".document-category");
+    categorySelect.innerHTML = state.docCategories
+      .map((category) => `<option value="${escapeHtml(category.id)}">${escapeHtml(category.name)}</option>`)
+      .join("");
+    categorySelect.value = doc.categoryId && categoryById(doc.categoryId) ? doc.categoryId : "preset-other";
+    const tagsEditor = node.querySelector(".document-tags-editor");
+    tagsEditor.value = (doc.tags || []).join(", ");
+    node.querySelector(".document-save-meta").addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: "保存文档信息",
+        message: `确认保存“${doc.title}”的分类和标签调整吗？`,
+        confirmText: "确认保存",
+      });
+      if (ok) {
+        await updateDocumentMetadata(doc.id, categorySelect.value, tagsEditor.value);
+      }
+    });
+    node.querySelector(".document-delete").addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: "删除文档",
+        message: `确认删除“${doc.title}”吗？删除后这篇资料和话题将无法继续学习。`,
+        confirmText: "确认删除",
+        tone: "danger",
+      });
+      if (ok) {
+        await deleteDocument(doc.id);
+      }
+    });
+    els.documentList.appendChild(node);
+  });
+}
+
+function renderAnalyzedMaterialList() {
+  if (!els.analyzedMaterialList) {
+    return;
+  }
+  const docs = [...state.allDocuments]
+    .filter((doc) => !doc.deletedAt && (doc.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey)
+    .filter((doc) => doc.analysis?.topics?.length)
+    .sort((a, b) => new Date(b.lastStudiedAt || b.updatedAt || b.createdAt) - new Date(a.lastStudiedAt || a.updatedAt || a.createdAt));
+  if (!docs.length) {
+    els.analyzedMaterialList.innerHTML = `<p class="empty-state compact">还没有已完成分析的材料。这里仅展示当前登录用户自己的内容。</p>`;
+    if (els.deleteAnalyzedMaterialsBtn) {
+      els.deleteAnalyzedMaterialsBtn.disabled = true;
+    }
+    return;
+  }
+  const sourceOptions = state.materialSources.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+  const typeOptions = state.materialTypes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+  els.analyzedMaterialList.innerHTML = docs.map((doc) => `
+    <article class="analyzed-material-item">
+      <label class="upload-check">
+        <input type="checkbox" data-analyzed-select="${escapeHtml(doc.id)}" />
+      </label>
+      <div class="analyzed-material-main">
+        <strong>${escapeHtml(doc.title || doc.fileName)}</strong>
+        <small>${escapeHtml(formatDate(doc.lastStudiedAt || doc.updatedAt || doc.createdAt))} · ${escapeHtml(String(doc.analysis?.topics?.length || 0))} 个话题</small>
+      </div>
+      <select class="text-input" data-analyzed-source="${escapeHtml(doc.id)}">${sourceOptions}</select>
+      <select class="text-input" data-analyzed-type="${escapeHtml(doc.id)}">${typeOptions}</select>
+      <button class="mini-button" type="button" data-analyzed-update="${escapeHtml(doc.id)}" disabled>更新</button>
+      <button class="mini-button danger" type="button" data-analyzed-delete="${escapeHtml(doc.id)}">删除</button>
+    </article>
+  `).join("");
+  els.analyzedMaterialList.querySelectorAll("[data-analyzed-source]").forEach((select) => {
+    const doc = docs.find((item) => item.id === select.dataset.analyzedSource);
+    select.value = materialSourceIdForDoc(doc) || state.materialSources[0]?.id || "";
+    select.dataset.originalValue = select.value;
+    select.addEventListener("change", () => updateAnalyzedMaterialRowState(select.dataset.analyzedSource));
+  });
+  els.analyzedMaterialList.querySelectorAll("[data-analyzed-type]").forEach((select) => {
+    const doc = docs.find((item) => item.id === select.dataset.analyzedType);
+    select.value = materialTypeIdForDoc(doc) || state.materialTypes[0]?.id || "";
+    select.dataset.originalValue = select.value;
+    select.addEventListener("change", () => updateAnalyzedMaterialRowState(select.dataset.analyzedType));
+  });
+  els.analyzedMaterialList.querySelectorAll("[data-analyzed-update]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const doc = docs.find((item) => item.id === button.dataset.analyzedUpdate);
+      const sourceSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-source="${cssEscape(button.dataset.analyzedUpdate)}"]`);
+      const typeSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-type="${cssEscape(button.dataset.analyzedUpdate)}"]`);
+      if (!doc || !sourceSelect || !typeSelect || button.disabled) {
+        return;
+      }
+      const ok = await confirmAction({
+        title: "更新材料信息",
+        message: `确认更新“${doc.title || doc.fileName}”的资料来源和材料类型吗？`,
+        confirmText: "确认更新",
+      });
+      if (ok) {
+        await updateDocumentMaterialMeta(doc.id, sourceSelect.value, typeSelect.value);
+      }
+    });
+  });
+  els.analyzedMaterialList.querySelectorAll("[data-analyzed-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const doc = docs.find((item) => item.id === button.dataset.analyzedDelete);
+      if (!doc) {
+        return;
+      }
+      const ok = await confirmAction({
+        title: "删除材料",
+        message: `确认删除“${doc.title || doc.fileName}”吗？删除后相关话题会进入回收站。`,
+        confirmText: "确认删除",
+        tone: "danger",
+      });
+      if (ok) {
+        await deleteDocument(doc.id);
+        renderAnalyzedMaterialList();
+      }
+    });
+  });
+  els.analyzedMaterialList.querySelectorAll("[data-analyzed-select]").forEach((checkbox) => {
+    checkbox.addEventListener("change", updateAnalyzedMaterialDeleteButton);
+  });
+  updateAnalyzedMaterialDeleteButton();
+}
+
+function updateAnalyzedMaterialRowState(docId) {
+  if (!els.analyzedMaterialList) {
+    return;
+  }
+  const sourceSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-source="${cssEscape(docId)}"]`);
+  const typeSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-type="${cssEscape(docId)}"]`);
+  const updateButton = els.analyzedMaterialList.querySelector(`[data-analyzed-update="${cssEscape(docId)}"]`);
+  if (!sourceSelect || !typeSelect || !updateButton) {
+    return;
+  }
+  const changed = sourceSelect.value !== sourceSelect.dataset.originalValue || typeSelect.value !== typeSelect.dataset.originalValue;
+  updateButton.disabled = !changed;
+}
+
+function selectedAnalyzedMaterialIds() {
+  if (!els.analyzedMaterialList) {
+    return [];
+  }
+  return [...els.analyzedMaterialList.querySelectorAll("[data-analyzed-select]:checked")].map((input) => input.dataset.analyzedSelect);
+}
+
+function updateAnalyzedMaterialDeleteButton() {
+  if (els.deleteAnalyzedMaterialsBtn) {
+    els.deleteAnalyzedMaterialsBtn.disabled = selectedAnalyzedMaterialIds().length === 0;
+  }
+}
+
+async function updateDocumentMetadata(docId, categoryId, tagsValue) {
+  const doc = state.documents.find((item) => item.id === docId);
+  const category = categoryById(categoryId) || categoryById("preset-other");
+  if (!doc || (!isAdmin() && doc.ownerEmailKey !== state.currentUser.emailKey) || !category) {
+    return;
+  }
+  await withStore(DOC_STORE, "readwrite", (store) => store.put({
+    ...doc,
+    categoryId: category.id,
+    categoryName: category.name,
+    tags: parseTags(tagsValue),
+    updatedAt: new Date().toISOString(),
+  }));
+  await logEvent("change_doc_metadata", { docId, categoryId: category.id, categoryName: category.name });
+  await loadDocuments();
+}
+
+async function updateDocumentMaterialMeta(docId, sourceId, typeId) {
+  const doc = state.allDocuments.find((item) => item.id === docId);
+  if (!doc || doc.deletedAt || (!isAdmin() && doc.ownerEmailKey !== state.currentUser.emailKey)) {
+    return;
+  }
+  const materialSource = sourceId ? materialSourceById(sourceId) : materialSourceForDoc(doc);
+  const materialType = typeId ? materialTypeById(typeId) : materialTypeForDoc(doc);
+  const updated = {
+    ...doc,
+    materialSourceId: materialSource?.id || "",
+    materialSourceName: materialSource?.name || "",
+    materialTypeId: materialType?.id || "",
+    materialTypeName: materialType?.name || "",
+    materialTypeTemplate: materialType?.name || "",
+    updatedAt: new Date().toISOString(),
+  };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await logEvent("change_material_meta", { docId, sourceId: updated.materialSourceId, typeId: updated.materialTypeId });
+  await loadDocuments();
+}
+
+function renderOwnerFilter() {
+  if (!els.libraryOwnerFilter || !isAdmin()) {
+    return;
+  }
+  const options = [
+    `<option value="all">所有用户资料</option>`,
+    `<option value="${escapeHtml(state.currentUser.emailKey)}">只看自己</option>`,
+    ...state.users
+      .filter((user) => user.emailKey !== state.currentUser.emailKey)
+      .map((user) => `<option value="${escapeHtml(user.emailKey)}">${escapeHtml(user.email)}</option>`),
+  ].join("");
+  els.libraryOwnerFilter.innerHTML = options;
+  els.libraryOwnerFilter.value = state.activeOwner;
+}
+
+function renderConfigPage() {
+  if (!els.configPage) {
+    return;
+  }
+  const theme = selectedTheme();
+  const ds = readDeepSeekSettings();
+  const fs = readFontSettings();
+  const providerOptions = MODEL_PROVIDERS.map((provider) => `<option value="${escapeHtml(provider.id)}"${(ds.provider || "deepseek") === provider.id ? " selected" : ""}>${escapeHtml(provider.name)}</option>`).join("");
+  const fontOptions = FONT_SIZE_PRESETS.map((preset) => `
+    <button class="font-option${(fs.presetId || "small") === preset.id ? " is-active" : ""}" type="button" data-font-preset="${preset.id}">
+      <strong>${escapeHtml(preset.name)}</strong>
+      <span>${escapeHtml(preset.bodySize)} / ${escapeHtml(preset.buttonSize)} / ${escapeHtml(preset.titleSize)}</span>
+      <small>${escapeHtml(preset.note)}</small>
+    </button>
+  `).join("");
+  els.configPage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Configuration</p>
+        <h2>系统配置</h2>
+      </div>
+      <p>账号、系统配色、字体大小和大模型连接统一在这里管理。</p>
+    </div>
+    <nav class="module-anchor-nav" aria-label="系统配置定位">
+      <button type="button" data-anchor-target="#accountSettings">账号设置</button>
+      <button type="button" data-anchor-target="#themeSettings">系统配色</button>
+      <button type="button" data-anchor-target="#fontSettings">字体大小</button>
+      <button type="button" data-anchor-target="#deepseekSettings">大模型配置</button>
+    </nav>
+    <div class="config-grid">
+      <section class="config-card" id="accountSettings">
+        <h3>账号设置</h3>
+        <p class="auth-note" id="accountEmail">当前账号：${escapeHtml(state.currentUser?.email || "")}</p>
+        <input class="text-input" id="oldPassword" type="password" autocomplete="current-password" placeholder="当前密码" />
+        <input class="text-input" id="newPassword" type="password" autocomplete="new-password" placeholder="新密码：至少10位，含大小写、数字、特殊字符" />
+        <input class="text-input" id="confirmPassword" type="password" autocomplete="new-password" placeholder="再次输入新密码" />
+        <button class="primary full-button" id="changePasswordBtn" type="button">修改密码</button>
+        <p class="auth-message" id="accountMessage"></p>
+      </section>
+      <section class="config-card config-theme-card" id="themeSettings">
+        <h3>系统配色</h3>
+        <p class="auth-note">当前方案：${escapeHtml(theme.scope)} · ${escapeHtml(theme.name)}。${escapeHtml(theme.description)}</p>
+        <div class="theme-grid" id="configThemeGrid"></div>
+      </section>
+      <section class="config-card config-theme-card" id="fontSettings">
+        <h3>字体大小</h3>
+        <p class="auth-note">全局只保留正文 / 按钮 / 标题三类字号，选择一个档位即可。</p>
+        <div class="font-options">${fontOptions}</div>
+      </section>
+      <section class="config-card config-theme-card" id="deepseekSettings">
+        <h3>大模型配置</h3>
+        <p class="auth-note">每位用户独立配置自己的大模型，系统只会调用当前登录用户保存的 token。</p>
+        <label class="config-field">
+          <span>大模型选择 <em>必填</em></span>
+          <select class="text-input" id="deepseekProvider">${providerOptions}</select>
+        </label>
+        <label class="config-field">
+          <span>API Key <em>必填</em></span>
+          <input class="text-input example-input" id="deepseekApiKey" type="password" data-example="sk-xxxxxxxxxxxxxxxx" placeholder="sk-xxxxxxxxxxxxxxxx" value="${escapeHtml(ds.apiKey)}" />
+        </label>
+        <label class="config-field">
+          <span>Base URL <em>必填</em></span>
+          <input class="text-input example-input" id="deepseekBaseUrl" type="text" data-example="https://api.deepseek.com" placeholder="https://api.deepseek.com" value="${escapeHtml(ds.baseUrl)}" />
+        </label>
+        <label class="config-field">
+          <span>模型名称 <em>必填</em></span>
+          <input class="text-input example-input" id="deepseekModel" type="text" data-example="deepseek-v4-flash" placeholder="deepseek-v4-flash" value="${escapeHtml(ds.model)}" />
+        </label>
+        <label class="config-field">
+          <span>思考模式</span>
+          <select class="text-input" id="deepseekThinking">
+          <option value="enabled"${ds.thinking === "enabled" ? " selected" : ""}>启用思考</option>
+          <option value="disabled"${ds.thinking === "disabled" ? " selected" : ""}>关闭思考</option>
+          </select>
+        </label>
+        <label class="config-field">
+          <span>推理强度</span>
+          <select class="text-input" id="deepseekReasoningEffort">
+          <option value="low"${ds.reasoningEffort === "low" ? " selected" : ""}>低</option>
+          <option value="medium"${ds.reasoningEffort === "medium" ? " selected" : ""}>中</option>
+          <option value="high"${ds.reasoningEffort === "high" ? " selected" : ""}>高</option>
+          </select>
+        </label>
+        <div class="config-actions">
+          <button class="primary nowrap-button" id="testDeepseekBtn" type="button">测试连接</button>
+          <button class="primary full-button" id="saveDeepseekSettingsBtn" type="button">保存大模型配置</button>
+        </div>
+        <p class="auth-message" id="deepseekMessage"></p>
+      </section>
+    </div>
+  `;
+  bindAnchorNav(els.configPage);
+  els.configPage.querySelector("#changePasswordBtn")?.addEventListener("click", async () => {
+    const ok = await confirmAction({
+      title: "修改密码",
+      message: "确认提交密码修改吗？修改成功后请使用新密码登录。",
+      confirmText: "确认修改",
+    });
+    if (!ok) {
+      return;
+    }
+    changeOwnPassword().catch((error) => {
+      const message = els.configPage.querySelector("#accountMessage");
+      if (message) {
+        message.textContent = `修改失败：${error.message}`;
+      }
+    });
+  });
+  els.configPage.querySelector("#saveDeepseekSettingsBtn")?.addEventListener("click", async () => {
+    const ok = await confirmAction({
+      title: "保存大模型配置",
+      message: "确认保存当前 DeepSeek 配置吗？后续执行分析会使用这套配置。",
+      confirmText: "确认保存",
+    });
+    if (!ok) {
+      return;
+    }
+    const nextSettings = readDeepSeekSettingsFromConfig();
+    await saveDeepSeekSettings(nextSettings);
+    state.deepseekTestSignature = "";
+    syncDeepSeekConfigButtons();
+    const message = els.configPage.querySelector("#deepseekMessage");
+    if (message) {
+      message.textContent = "大模型配置已保存。";
+      message.dataset.tone = "success";
+    }
+  });
+  els.configPage.querySelectorAll("[data-font-preset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const preset = FONT_SIZE_PRESETS.find((item) => item.id === button.dataset.fontPreset) || FONT_SIZE_PRESETS[1];
+      const next = {
+        presetId: preset.id,
+        bodySize: preset.bodySize,
+        buttonSize: preset.buttonSize,
+        titleSize: preset.titleSize,
+      };
+      saveFontSettings(next);
+      applyFontSettings(next);
+      renderConfigPage();
+    });
+  });
+  const providerSelect = els.configPage.querySelector("#deepseekProvider");
+  providerSelect?.addEventListener("change", () => {
+    const provider = MODEL_PROVIDERS.find((item) => item.id === providerSelect.value) || MODEL_PROVIDERS[0];
+    const baseInput = els.configPage.querySelector("#deepseekBaseUrl");
+    const modelInput = els.configPage.querySelector("#deepseekModel");
+    if (baseInput && !baseInput.value.trim()) {
+      baseInput.value = provider.baseUrl;
+    }
+    if (modelInput && !modelInput.value.trim()) {
+      modelInput.value = provider.model;
+    }
+    syncDeepSeekConfigButtons("配置已变更，请重新测试连接。");
+  });
+  els.configPage.querySelectorAll("#deepseekSettings input, #deepseekSettings select").forEach((field) => {
+    field.addEventListener("input", () => {
+      state.deepseekTestSignature = "";
+      syncDeepSeekConfigButtons("配置已变更，请重新测试连接。");
+    });
+    field.addEventListener("change", () => {
+      state.deepseekTestSignature = "";
+      syncDeepSeekConfigButtons("配置已变更，请重新测试连接。");
+    });
+  });
+  els.configPage.querySelectorAll(".example-input").forEach((field) => {
+    const example = field.dataset.example || "";
+    field.addEventListener("focus", () => {
+      field.placeholder = "";
+    });
+    field.addEventListener("blur", () => {
+      field.placeholder = example;
+      syncDeepSeekConfigButtons();
+    });
+  });
+  els.configPage.querySelector("#testDeepseekBtn")?.addEventListener("click", async () => {
+    const ok = await confirmAction({
+      title: "测试大模型连接",
+      message: "确认用当前配置发起一次 DeepSeek 连接测试吗？",
+      confirmText: "确认测试",
+    });
+    if (!ok) {
+      return;
+    }
+    const message = els.configPage.querySelector("#deepseekMessage");
+    if (message) {
+      message.textContent = "正在测试连接...";
+      message.dataset.tone = "info";
+    }
+    try {
+      const settings = readDeepSeekSettingsFromConfig();
+      const result = await testDeepSeekConnection(settings);
+      state.deepseekTestSignature = deepSeekSettingsSignature(settings);
+      if (message) {
+        message.textContent = result?.message || "DeepSeek 连接成功。";
+        message.dataset.tone = "success";
+      }
+      syncDeepSeekConfigButtons();
+    } catch (error) {
+      state.deepseekTestSignature = "";
+      if (message) {
+        message.textContent = `测试失败：${error.message}`;
+        message.dataset.tone = "error";
+      }
+      syncDeepSeekConfigButtons();
+    }
+  });
+  syncDeepSeekConfigButtons();
+  renderThemeGrid();
+  scrollToModuleTop(els.configPage);
+}
+
+function renderTopicSkillPage() {
+  if (!els.topicSkillPage) {
+    return;
+  }
+  const activeTypeId = state.materialTypes.some((type) => type.id === state.activeSkillMaterialTypeId)
+    ? state.activeSkillMaterialTypeId
+    : "type-executive-view";
+  state.activeSkillMaterialTypeId = activeTypeId;
+  const activeType = materialTypeById(activeTypeId) || DEFAULT_MATERIAL_TYPES[0];
+  const latest = currentTopicSkill(activeTypeId);
+  const baseSkill = topicSkillTemplateForMaterialType(activeTypeId);
+  const versions = [...state.topicSkills]
+    .filter((skill) => (skill.targetMaterialTypeId || "type-executive-view") === activeTypeId)
+    .concat(state.topicSkills.some((skill) => skill.version === baseSkill.version && (skill.targetMaterialTypeId || "type-executive-view") === activeTypeId) ? [] : [baseSkill])
+    .sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
+  if (!versions.some((skill) => skill.version === latest.version)) {
+    versions.unshift(latest);
+  }
+  const typeOptions = state.materialTypes
+    .map((type) => `<option value="${escapeHtml(type.id)}" ${type.id === activeTypeId ? "selected" : ""}>${escapeHtml(type.name)}</option>`)
+    .join("");
+  const versionOptions = versions
+    .map((skill) => `<option value="${escapeHtml(skill.version)}">${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || skillFileNameForMaterialTypeName(activeType.name))}</option>`)
+    .join("");
+  const batchCandidates = skillRefreshCandidateDocs(activeTypeId, latest);
+  const batchRunning = state.skillBatchRefresh.active && state.skillBatchRefresh.skillTypeId === activeTypeId && state.skillBatchRefresh.skillVersion === latest.version;
+  const batchCompleted = state.skillBatchRefresh.completed && state.skillBatchRefresh.skillTypeId === activeTypeId && state.skillBatchRefresh.skillVersion === latest.version;
+  const batchProgressItems = Object.values(state.skillBatchRefresh.progressByDoc || {});
+  const batchDoneCount = batchProgressItems.filter((item) => item.status === "done").length;
+  const batchSelectedCount = (state.skillBatchRefresh.selectedIds || []).length;
+  const batchCandidateTopicCount = totalTopicCount(batchCandidates);
+  const batchPanel = (batchRunning || batchCompleted) ? `
+    <div class="skill-batch-status-panel">
+      <strong>${batchRunning ? "批量刷新执行中" : "批量刷新已完成"}</strong>
+      <span>${escapeHtml(skillDisplayName(latest, "话题拆解 SKILL.md"))} · ${escapeHtml(String(batchDoneCount))}/${escapeHtml(String(batchSelectedCount || batchProgressItems.length || 0))} 份</span>
+      <button class="mini-button" type="button" data-open-skill-batch>查看执行窗口</button>
+    </div>
+  ` : "";
+  const defaultCompareLeft = versions[1]?.version || versions[0]?.version || "";
+  const defaultCompareRight = versions[0]?.version || "";
+  const versionRows = versions.map((skill) => {
+    const previousSkill = previousSkillForVersion(skill, versions);
+    const changeLog = skillChangeLogForVersion(skill, versions);
+    return `
+      <article class="skill-version-card${skill.version === latest.version ? " is-current" : ""}">
+        <div class="skill-version-head">
+          <div>
+            <strong>${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || skillFileNameForMaterialTypeName(activeType.name))}</strong>
+            <small>${escapeHtml(skill.skillFileName || "SKILL.md")} · ${escapeHtml(skill.targetMaterialTypeName || activeType.name)} · ${escapeHtml(skill.isPreset ? "系统预设" : "自定义版本")} · ${escapeHtml(formatDate(skill.createdAt))}</small>
+          </div>
+          ${skill.version === latest.version ? `<span class="skill-current-badge">当前生效</span>` : ""}
+        </div>
+        <p>${escapeHtml(skill.summary || "暂无版本说明")}</p>
+        <div class="skill-change-log">
+          <div class="skill-change-log-head">
+            <h4>版本差异日志</h4>
+            ${previousSkill ? `<button class="material-skill-diff-link" type="button" data-skill-version-diff="${escapeHtml(skill.version)}">查看差异</button>` : ""}
+          </div>
+          <ul>${changeLog.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        </div>
+        <details>
+          <summary>查看 SKILL 组织规则</summary>
+          <pre>${escapeHtml(skill.prompt || "")}</pre>
+        </details>
+      </article>
+    `;
+  }).join("");
+  els.topicSkillPage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Skill Hall</p>
+        <h2>话题 SKILL</h2>
+      </div>
+      <p>这里按资料类型管理话题拆解 SKILL.md，不同资料类型可以拥有不同的拆解方式。</p>
+    </div>
+    <nav class="module-anchor-nav" aria-label="话题 SKILL 定位">
+      <button type="button" data-anchor-target="#skillCreate">发布新版本</button>
+      <button type="button" data-anchor-target="#skillVersions">版本管理</button>
+    </nav>
+    <p class="category-notice" id="topicSkillNotice" data-tone="${escapeHtml(state.skillNotice.tone || "info")}">${escapeHtml(state.skillNotice.message || `当前生效版本会用于新的${activeType.name}材料分析，也会作为材料列表的可刷新目标。`)}</p>
+    <div class="config-grid skill-config-grid">
+      <section class="config-card config-theme-card" id="skillCreate">
+        <h3>发布新版本</h3>
+        <label class="config-field compact-config-field skill-type-field">
+          <span>SKILL 类型来源</span>
+          <select class="text-input" id="skillMaterialTypeSelect">${typeOptions}</select>
+        </label>
+        <p class="auth-note">适用材料类型：${escapeHtml(activeType.name)}。新版本默认继承上一版 SKILL.md 内容，只对当前登录用户生效。</p>
+        <label class="config-field">
+          <span>版本说明 <em>必填</em></span>
+          <input class="text-input" id="newSkillSummary" type="text" placeholder="例如：强化原文证据约束，增加业务场景与管理动作拆解" value="${escapeHtml(latest.summary || "")}" />
+        </label>
+        <label class="config-field">
+          <span>SKILL.md 内容 <em>必填</em></span>
+          <textarea class="text-input skill-prompt-input" id="newSkillPrompt" rows="18" placeholder="写清楚话题抽取标准、文章模块顺序、证据要求、禁止事项等。">${escapeHtml(latest.prompt || "")}</textarea>
+        </label>
+        <button class="primary" id="createTopicSkillBtn" type="button" disabled>发布话题 SKILL 新版本</button>
+      </section>
+      <section class="config-card config-theme-card" id="skillVersions">
+        <h3>版本管理</h3>
+        <p class="auth-note">当前最新版本：${escapeHtml(latest.version)}。材料刷新后会保留历史版本，可在材料列表中切换查看。</p>
+        <div class="skill-latest-actions">
+          <button class="primary" data-open-skill-batch type="button" ${(!batchCandidates.length && !batchRunning && !batchCompleted) ? "disabled" : ""}>批量刷新材料</button>
+          <span>${batchCandidates.length ? `有 ${escapeHtml(String(batchCandidates.length))} 份材料 / ${escapeHtml(String(batchCandidateTopicCount))} 个话题尚未使用最新 SKILL。` : "当前没有需要刷新到最新 SKILL 的材料。"}</span>
+        </div>
+        ${batchPanel}
+        ${versions.length > 1 ? `
+          <div class="skill-version-compare">
+            <label class="config-field compact-config-field">
+              <span>历史版本</span>
+              <select class="text-input" id="skillCompareLeft">${versionOptions}</select>
+            </label>
+            <label class="config-field compact-config-field">
+              <span>对比版本</span>
+              <select class="text-input" id="skillCompareRight">${versionOptions}</select>
+            </label>
+            <button class="mini-button" id="skillCompareBtn" type="button">查看差异</button>
+          </div>
+        ` : ""}
+        <div class="skill-version-list">
+          ${versionRows || `<p class="empty-state compact">暂无 SKILL 版本。</p>`}
+        </div>
+      </section>
+    </div>
+  `;
+  bindAnchorNav(els.topicSkillPage);
+  els.topicSkillPage.querySelector("#skillMaterialTypeSelect")?.addEventListener("change", (event) => {
+    state.activeSkillMaterialTypeId = event.target.value;
+    state.skillNotice = { message: "", tone: "info" };
+    renderTopicSkillPage();
+  });
+  els.topicSkillPage.querySelectorAll("[data-open-skill-batch]").forEach((button) => {
+    button.addEventListener("click", () => openSkillBatchRefreshModal(activeTypeId));
+  });
+  const skillByRenderedVersion = (version) => versions.find((skill) => skill.version === version);
+  els.topicSkillPage.querySelectorAll("[data-skill-version-diff]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const skill = skillByRenderedVersion(button.dataset.skillVersionDiff);
+      const previousSkill = previousSkillForVersion(skill, versions);
+      if (!skill || !previousSkill) {
+        setSkillNotice("这个版本暂无上一版可比较。", "info");
+        return;
+      }
+      showSkillDiffCompareModal({
+        title: `${skill.targetMaterialTypeName || activeType.name} · ${skill.version} 与上一版差异`,
+        leftSkill: previousSkill,
+        rightSkill: skill,
+        leftLabel: "上一版本",
+        rightLabel: "当前版本",
+      });
+    });
+  });
+  const compareLeft = els.topicSkillPage.querySelector("#skillCompareLeft");
+  const compareRight = els.topicSkillPage.querySelector("#skillCompareRight");
+  const compareButton = els.topicSkillPage.querySelector("#skillCompareBtn");
+  if (compareLeft && defaultCompareLeft) {
+    compareLeft.value = defaultCompareLeft;
+  }
+  if (compareRight && defaultCompareRight) {
+    compareRight.value = defaultCompareRight;
+  }
+  const syncCompareButton = () => {
+    if (compareButton) {
+      compareButton.disabled = !compareLeft?.value || !compareRight?.value || compareLeft.value === compareRight.value;
+    }
+  };
+  compareLeft?.addEventListener("change", syncCompareButton);
+  compareRight?.addEventListener("change", syncCompareButton);
+  compareButton?.addEventListener("click", () => {
+    const leftSkill = skillByRenderedVersion(compareLeft?.value);
+    const rightSkill = skillByRenderedVersion(compareRight?.value);
+    if (!leftSkill || !rightSkill || leftSkill.version === rightSkill.version) {
+      return;
+    }
+    showSkillDiffCompareModal({
+      title: `${activeType.name} · SKILL 历史版本对比`,
+      leftSkill,
+      rightSkill,
+      leftLabel: "左侧版本",
+      rightLabel: "右侧版本",
+    });
+  });
+  syncCompareButton();
+  const summaryInput = els.topicSkillPage.querySelector("#newSkillSummary");
+  const promptInput = els.topicSkillPage.querySelector("#newSkillPrompt");
+  const createButton = els.topicSkillPage.querySelector("#createTopicSkillBtn");
+  const syncButton = () => {
+    if (createButton) {
+      createButton.disabled = !summaryInput?.value.trim() || !promptInput?.value.trim();
+    }
+  };
+  summaryInput?.addEventListener("input", syncButton);
+  promptInput?.addEventListener("input", syncButton);
+  createButton?.addEventListener("click", async () => {
+    if (createButton.disabled) {
+      return;
+    }
+    const diffLog = buildSkillDiffLog(latest, {
+      summary: summaryInput.value,
+      prompt: promptInput.value,
+    });
+    const ok = await confirmAction({
+      title: "发布话题 SKILL 新版本",
+      message: `确认发布新的${activeType.name}话题 SKILL 版本吗？\n\n与上一版差异：\n${diffLog.map((item) => `- ${item}`).join("\n")}\n\n发布后新的同类型材料分析会默认使用它，已有材料会出现 SKILL 刷新提示。`,
+      confirmText: "确认发布",
+    });
+    if (ok) {
+      await createTopicSkillVersion(summaryInput.value, promptInput.value, diffLog);
+    }
+  });
+  syncButton();
+}
+
+function bindAnchorNav(root) {
+  root?.querySelectorAll("[data-anchor-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = root.querySelector(button.dataset.anchorTarget);
+      if (!target) {
+        return;
+      }
+      if (button.dataset.anchorTarget === "#accountSettings") {
+        scrollToModuleTop(root, "smooth");
+        return;
+      }
+      const headerHeight = document.querySelector(".page-utility-bar")?.getBoundingClientRect().height || 0;
+      const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+      window.scrollTo({
+        top: Math.max(0, targetTop),
+        behavior: "smooth",
+      });
+    });
+  });
+}
+
+function scrollToModuleTop(root, behavior = "auto") {
+  if (!root) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    const headerHeight = document.querySelector(".page-utility-bar")?.getBoundingClientRect().height || 0;
+    const targetTop = root.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior,
+    });
+  });
+}
+
+function renderMaterialManagePage() {
+  if (!els.materialManagePage) {
+    return;
+  }
+  const sourceOptions = state.materialSources
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.isPreset ? "（预设）" : ""}</option>`)
+    .join("");
+  const typeOptions = state.materialTypes
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.isPreset ? "（预设）" : ""}</option>`)
+    .join("");
+  els.materialManagePage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Material</p>
+        <h2>资料管理</h2>
+      </div>
+      <p>配置材料上传时使用的资料来源和资料类型。</p>
+    </div>
+    <nav class="module-anchor-nav" aria-label="资料管理定位">
+      <button type="button" data-anchor-target="#sourceSettings">资料来源</button>
+      <button type="button" data-anchor-target="#typeSettings">资料类型</button>
+    </nav>
+    <div class="config-grid">
+      <section class="config-card config-theme-card" id="sourceSettings">
+        <h3>资料来源配置</h3>
+        <p class="auth-note">先选择已有来源进行修改，或选择“新增资料来源”。名称必填，最多20个字符。</p>
+        <form class="material-config-form" id="sourceConfigForm">
+          <label class="config-field compact-config-field">
+            <span>资料来源</span>
+            <select class="text-input" id="sourceConfigSelect">
+              ${sourceOptions}
+              <option value="__new__">新增资料来源</option>
+            </select>
+          </label>
+          <label class="config-field compact-config-field">
+            <span>来源名称 <em>必填</em></span>
+            <input class="text-input compact-text-input" id="sourceConfigName" type="text" maxlength="20" required placeholder="最多20个字符" />
+          </label>
+          <button class="primary material-config-save" type="submit">保存资料来源</button>
+        </form>
+      </section>
+      <section class="config-card config-theme-card" id="typeSettings">
+        <h3>资料类型配置</h3>
+        <p class="auth-note">资料类型会决定话题 SKILL 的类型。修改类型名称后，对应 SKILL 类型名称会同步更新，具体拆解方法在 SKILL.md 中维护。</p>
+        <form class="material-config-form" id="typeConfigForm">
+          <label class="config-field compact-config-field">
+            <span>资料类型</span>
+            <select class="text-input" id="typeConfigSelect">
+              ${typeOptions}
+              <option value="__new__">新增资料类型</option>
+            </select>
+          </label>
+          <label class="config-field compact-config-field">
+            <span>类型名称 <em>必填</em></span>
+            <input class="text-input compact-text-input" id="typeConfigName" type="text" maxlength="20" required placeholder="最多20个字符" />
+          </label>
+          <button class="primary material-config-save" type="submit">保存资料类型</button>
+        </form>
+        <p class="auth-message" id="materialConfigMessage">${escapeHtml(state.materialConfigNotice.message || "")}</p>
+      </section>
+    </div>
+  `;
+  const notice = els.materialManagePage.querySelector("#materialConfigMessage");
+  if (notice) {
+    notice.dataset.tone = state.materialConfigNotice.tone || "info";
+  }
+  bindAnchorNav(els.materialManagePage);
+  const sourceSelect = els.materialManagePage.querySelector("#sourceConfigSelect");
+  const sourceName = els.materialManagePage.querySelector("#sourceConfigName");
+  const typeSelect = els.materialManagePage.querySelector("#typeConfigSelect");
+  const typeName = els.materialManagePage.querySelector("#typeConfigName");
+  const syncSourceForm = () => {
+    const item = state.materialSources.find((entry) => entry.id === sourceSelect?.value);
+    if (sourceName) {
+      sourceName.value = item?.name || "";
+      sourceName.placeholder = sourceSelect?.value === "__new__" ? "例如：CEO Marks" : "最多20个字符";
+    }
+    syncMaterialConfigButtons();
+  };
+  const syncTypeForm = () => {
+    const item = state.materialTypes.find((entry) => entry.id === typeSelect?.value);
+    if (typeName) {
+      typeName.value = item?.name || "";
+      typeName.placeholder = typeSelect?.value === "__new__" ? "例如：会议纪要" : "最多20个字符";
+    }
+    syncMaterialConfigButtons();
+  };
+  const syncMaterialConfigButtons = () => {
+    const sourceButton = els.materialManagePage.querySelector("#sourceConfigForm button[type='submit']");
+    const typeButton = els.materialManagePage.querySelector("#typeConfigForm button[type='submit']");
+    const sourceValue = String(sourceName?.value || "").trim();
+    const typeValue = String(typeName?.value || "").trim();
+    if (sourceButton) {
+      sourceButton.disabled = !sourceValue || sourceValue.length > 20;
+    }
+    if (typeButton) {
+      typeButton.disabled = !typeValue || typeValue.length > 20;
+    }
+  };
+  sourceSelect?.addEventListener("change", syncSourceForm);
+  typeSelect?.addEventListener("change", syncTypeForm);
+  sourceName?.addEventListener("input", syncMaterialConfigButtons);
+  typeName?.addEventListener("input", syncMaterialConfigButtons);
+  syncSourceForm();
+  syncTypeForm();
+  els.materialManagePage.querySelector("#sourceConfigForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const isNew = sourceSelect?.value === "__new__";
+    const ok = await confirmAction({
+      title: isNew ? "新增资料来源" : "修改资料来源",
+      message: isNew ? "确认新增这个资料来源吗？" : "确认修改这个资料来源吗？历史材料中的来源名称也会同步更新。",
+      confirmText: "确认保存",
+    });
+    if (!ok) {
+      return;
+    }
+    if (isNew) {
+      await createMaterialSource(sourceName.value);
+    } else {
+      await updateMaterialSourceConfig(sourceSelect.value, sourceName.value);
+    }
+    renderMaterialManagePage();
+  });
+  els.materialManagePage.querySelector("#typeConfigForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const isNew = typeSelect?.value === "__new__";
+    const ok = await confirmAction({
+      title: isNew ? "新增资料类型" : "修改资料类型",
+      message: isNew ? "确认新增这个资料类型吗？新增后可以在话题 SKILL 中配置对应 SKILL.md。" : "确认修改这个资料类型吗？对应 SKILL 类型名称会同步更新。",
+      confirmText: "确认保存",
+    });
+    if (!ok) {
+      return;
+    }
+    if (isNew) {
+      await createMaterialType(typeName.value);
+    } else {
+      await updateMaterialTypeConfig(typeSelect.value, typeName.value);
+    }
+    renderMaterialManagePage();
+  });
+}
+
+function renderRecyclePage() {
+  if (!els.recyclePage || !isAdmin()) {
+    return;
+  }
+  const users = [...new Set(state.allDocuments.filter((doc) => doc.deletedAt).map((doc) => doc.ownerEmail).filter(Boolean))].sort();
+  const filter = String(state.recycleUserFilter || "").trim().toLowerCase();
+  const docs = state.allDocuments
+    .filter((doc) => doc.deletedAt)
+    .filter((doc) => !filter || `${doc.ownerEmail} ${doc.ownerEmailKey}`.toLowerCase().includes(filter))
+    .sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+  const docRows = docs.map((doc) => {
+    const topics = doc.analysis?.topics || [];
+    const expanded = state.recycleExpandedDocIds.includes(doc.id);
+    const topicList = expanded
+      ? `
+        <tr class="recycle-topic-row">
+          <td colspan="6">
+            <div class="recycle-topic-list">
+              ${topics.length ? topics.map((topic, index) => `
+                <button type="button" data-recycle-topic="${escapeHtml(doc.id)}" data-recycle-topic-index="${index}">
+                  <span>${escapeHtml(topic.topicCode || topicCodeFromNumber(index + 1))}</span>
+                  ${escapeHtml(topic.title || `话题${index + 1}`)}
+                </button>
+              `).join("") : `<p class="empty-state compact">这份材料没有关联话题。</p>`}
+            </div>
+          </td>
+        </tr>
+      `
+      : "";
+    return `
+      <tr>
+        <td><button class="link-button" type="button" data-recycle-doc-preview="${escapeHtml(doc.id)}">${escapeHtml(doc.title || doc.fileName)}</button></td>
+        <td>${escapeHtml(doc.ownerEmail || "")}</td>
+        <td>${escapeHtml(formatDate(doc.deletedAt))}</td>
+        <td>${escapeHtml(doc.deletedBy || "")}</td>
+        <td><button class="mini-button compact-mini" type="button" data-recycle-toggle="${escapeHtml(doc.id)}">${expanded ? "收起" : "展开"} ${escapeHtml(String(topics.length || 0))}</button></td>
+        <td>
+          <button class="mini-button" type="button" data-restore-doc="${escapeHtml(doc.id)}">恢复</button>
+          <button class="mini-button danger" type="button" data-hard-delete-doc="${escapeHtml(doc.id)}">彻底删除</button>
+        </td>
+      </tr>
+      ${topicList}
+    `;
+  }).join("");
+  els.recyclePage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Recycle Bin</p>
+        <h2>回收站</h2>
+      </div>
+      <p>所有用户删除的材料会先进入这里。恢复后相关话题重新出现；彻底删除后不可恢复。</p>
+    </div>
+    <div class="admin-toolbar">
+      <input class="text-input" id="recycleUserFilter" list="recycleUserOptions" type="search" placeholder="按用户邮箱筛选" value="${escapeHtml(state.recycleUserFilter || "")}" />
+      <datalist id="recycleUserOptions">${users.map((email) => `<option value="${escapeHtml(email)}"></option>`).join("")}</datalist>
+    </div>
+    <section class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr><th>材料</th><th>用户</th><th>删除时间</th><th>删除人</th><th>话题</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          ${docs.length ? docRows : `<tr><td colspan="6">回收站为空。</td></tr>`}
+        </tbody>
+      </table>
+    </section>
+    <section class="recycle-preview-panel" id="recyclePreviewPanel">
+      ${buildRecyclePreviewHtml(docs)}
+    </section>
+  `;
+  els.recyclePage.querySelector("#recycleUserFilter")?.addEventListener("input", (event) => {
+    state.recycleUserFilter = event.target.value;
+    renderRecyclePage();
+  });
+  els.recyclePage.querySelectorAll("[data-recycle-doc-preview]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const docId = button.dataset.recycleDocPreview;
+      const isExpanded = state.recycleExpandedDocIds.includes(docId);
+      state.recycleExpandedDocIds = isExpanded
+        ? state.recycleExpandedDocIds.filter((id) => id !== docId)
+        : [...state.recycleExpandedDocIds, docId];
+      state.recyclePreview = isExpanded && state.recyclePreview.type === "doc" && state.recyclePreview.docId === docId
+        ? { type: "", docId: "", topicIndex: 0 }
+        : { type: "doc", docId, topicIndex: 0 };
+      renderRecyclePage();
+    });
+  });
+  els.recyclePage.querySelectorAll("[data-recycle-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const docId = button.dataset.recycleToggle;
+      state.recycleExpandedDocIds = state.recycleExpandedDocIds.includes(docId)
+        ? state.recycleExpandedDocIds.filter((id) => id !== docId)
+        : [...state.recycleExpandedDocIds, docId];
+      renderRecyclePage();
+    });
+  });
+  els.recyclePage.querySelectorAll("[data-recycle-topic]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.recyclePreview = {
+        type: "topic",
+        docId: button.dataset.recycleTopic,
+        topicIndex: Number(button.dataset.recycleTopicIndex || 0),
+      };
+      renderRecyclePage();
+    });
+  });
+  els.recyclePage.querySelectorAll("[data-restore-doc]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: "恢复材料",
+        message: "确认恢复这份材料吗？恢复后相关话题会重新出现在话题列表。",
+        confirmText: "确认恢复",
+      });
+      if (ok) {
+        await restoreDocument(button.dataset.restoreDoc);
+      }
+    });
+  });
+  els.recyclePage.querySelectorAll("[data-hard-delete-doc]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: "彻底删除材料",
+        message: "确认彻底删除这份材料吗？此操作不可恢复。",
+        confirmText: "彻底删除",
+        tone: "danger",
+      });
+      if (ok) {
+        await hardDeleteDocument(button.dataset.hardDeleteDoc);
+      }
+    });
+  });
+}
+
+function recycleTopicRow(doc, topic, index) {
+  return {
+    id: `${doc.id}::${index}`,
+    docId: doc.id,
+    docTitle: doc.title,
+    doc,
+    topic,
+    topicIndex: index,
+    displayIndex: topic.topicCode || topicCodeFromNumber(index + 1),
+    title: topic.title || `话题${index + 1}`,
+    tags: [...new Set([...(topic.problemTypes || []), ...(doc.tags || [])])].slice(0, 5),
+    type: materialTypeNameForDoc(doc),
+    source: materialSourceNameForDoc(doc),
+    ownerEmail: doc.ownerEmail || "",
+    ownerEmailKey: doc.ownerEmailKey || "",
+    updatedAt: doc.lastStudiedAt || doc.updatedAt || doc.createdAt,
+  };
+}
+
+function buildRecyclePreviewHtml(docs) {
+  const preview = state.recyclePreview || {};
+  const doc = docs.find((item) => item.id === preview.docId);
+  if (!doc) {
+    return `<p class="empty-state compact">点击材料名称查看材料内容，或展开话题后点击话题查看解析。</p>`;
+  }
+  if (preview.type === "topic") {
+    const topic = doc.analysis?.topics?.[preview.topicIndex];
+    if (!topic) {
+      return `<p class="empty-state compact">没有找到这个话题。</p>`;
+    }
+    return `
+      <div class="recycle-preview-header">
+        <p class="section-kicker">话题预览</p>
+      </div>
+      <article class="topic-article recycle-topic-preview">
+        ${buildTopicArticleHtml(topic, recycleTopicRow(doc, topic, preview.topicIndex))}
+      </article>
+    `;
+  }
+  const isCurrentDoc = preview.type === "doc" && preview.docId === doc.id;
+  if (!isCurrentDoc) {
+    return `<p class="empty-state compact">点击材料名称查看材料内容，或展开话题后点击话题查看解析。</p>`;
+  }
+  const paragraphs = formatOriginalParagraphs(doc.rawText || "");
+  const body = paragraphs.length
+    ? paragraphs.map((paragraph) => renderOriginalParagraph(paragraph)).join("")
+    : `<p class="empty-state compact">这份材料没有可展示的原文。</p>`;
+  return `
+    <div class="recycle-preview-header">
+      <p class="section-kicker">材料预览</p>
+      <h3>${escapeHtml(doc.title || doc.fileName)}</h3>
+    </div>
+    <div class="topic-meta source-meta">
+      <span class="pill">用户：${escapeHtml(doc.ownerEmail || "")}</span>
+      <span class="pill">资料来源：${escapeHtml(materialSourceNameForDoc(doc))}</span>
+      <span class="pill">资料类型：${escapeHtml(materialTypeNameForDoc(doc))}</span>
+    </div>
+    <div class="topic-original-body recycle-original-preview">${body}</div>
+  `;
+}
+
+function readSystemVersionState() {
+  try {
+    return JSON.parse(localStorage.getItem(SYSTEM_VERSION_STATE_KEY) || "{}");
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveSystemVersionState(next) {
+  localStorage.setItem(SYSTEM_VERSION_STATE_KEY, JSON.stringify(next));
+}
+
+function canRollbackVersion(version) {
+  const ageMs = Date.now() - new Date(version.date).getTime();
+  return ageMs <= 30 * 24 * 60 * 60 * 1000;
+}
+
+function renderVersionPage() {
+  if (!els.versionPage) {
+    return;
+  }
+  const versionState = readSystemVersionState();
+  const currentVersion = versionState.activeVersion || SYSTEM_VERSIONS[0].version;
+  els.versionPage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Release Notes</p>
+        <h2>系统版本</h2>
+      </div>
+      <p>当前系统版本：${escapeHtml(currentVersion)}。普通用户可查看更新日志；管理员可登记 30 天内版本还原。</p>
+    </div>
+    <div class="version-list">
+      ${SYSTEM_VERSIONS.map((version) => `
+        <article class="version-card${version.version === currentVersion ? " is-active" : ""}">
+          <div>
+            <strong>${escapeHtml(version.version)} · ${escapeHtml(version.title)}</strong>
+            <small>${escapeHtml(formatVersionDate(version))}${version.version === currentVersion ? " · 当前版本" : ""}</small>
+          </div>
+          <ul>${version.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>
+          ${isAdmin() ? `<div class="version-actions"><button class="mini-button version-rollback-button" type="button" data-version-rollback="${escapeHtml(version.version)}" ${canRollbackVersion(version) ? "" : "disabled"}>版本还原</button></div>` : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+  els.versionPage.querySelectorAll("[data-version-rollback]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const version = SYSTEM_VERSIONS.find((item) => item.version === button.dataset.versionRollback);
+      const ok = await confirmAction({
+        title: "版本还原",
+        message: `确认将系统版本标记还原到 ${version.version} 吗？当前静态原型会记录还原版本和操作日志。`,
+        confirmText: "确认还原",
+      });
+      if (!ok) {
+        return;
+      }
+      saveSystemVersionState({
+        activeVersion: version.version,
+        rollbackAt: new Date().toISOString(),
+        rollbackBy: state.currentUser.email,
+      });
+      await logEvent("rollback_version", { version: version.version });
+      renderVersionPage();
+    });
+  });
+}
+
+function renderAdminPage(revealedPassword = "", targetEmail = "") {
+  if (!els.adminPage) {
+    return;
+  }
+  if (!isAdmin()) {
+    els.adminPage.innerHTML = `<p class="empty-state">只有 Simon.Lv@fanruan.com 可以进入管理后台。</p>`;
+    return;
+  }
+
+  const userRows = state.users
+    .map((user) => {
+      const userDocs = state.allDocuments.filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === user.emailKey);
+      const activeDocsForUser = userDocs.filter((doc) => !doc.deletedAt);
+      const deletedDocsForUser = userDocs.filter((doc) => doc.deletedAt);
+      const activeTopicCount = activeDocsForUser.reduce((sum, doc) => sum + Number(doc.analysis?.topics?.length || 0), 0);
+      const deletedTopicCount = deletedDocsForUser.reduce((sum, doc) => sum + Number(doc.analysis?.topics?.length || 0), 0);
+      const statusText = user.status === "active" ? "已开通" : "待分配密码";
+      const resetText = user.pendingReset ? "有找回申请" : "无";
+      const action = user.emailKey === state.currentUser.emailKey
+        ? `<span class="muted-text">超级管理员</span>`
+        : `<button class="mini-button" type="button" data-user-action="activate" data-email-key="${escapeHtml(user.emailKey)}">${user.status === "active" ? "重置密码" : "生成初始密码"}</button>`;
+      return `
+        <tr>
+          <td>${escapeHtml(user.email)}</td>
+          <td>${escapeHtml(user.role === "admin" ? "管理员" : "用户")}</td>
+          <td>${statusText}</td>
+          <td>${formatDate(user.registeredAt || user.createdAt)}</td>
+          <td>${user.lastLoginAt ? formatDate(user.lastLoginAt) : "未登录"}</td>
+          <td>${user.loginCount || 0}</td>
+          <td>${user.visitCount || 0}</td>
+          <td>${activeDocsForUser.length}</td>
+          <td>${activeTopicCount}</td>
+          <td>${deletedDocsForUser.length}</td>
+          <td>${deletedTopicCount}</td>
+          <td>${resetText}</td>
+          <td>${action}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const totalDocs = state.documents.length;
+  const pendingUsers = state.users.filter((user) => user.status !== "active").length;
+  const resetUsers = state.users.filter((user) => user.pendingReset).length;
+  const activeUsers = state.users.filter((user) => user.status === "active").length;
+  const reveal = revealedPassword
+    ? `
+      <section class="password-reveal">
+        <h3>已为 ${escapeHtml(targetEmail)} 生成密码</h3>
+        <p>请把下面的密码发送给对方；页面刷新后不会再次显示。</p>
+        <code>${escapeHtml(revealedPassword)}</code>
+      </section>
+    `
+    : "";
+
+  els.adminPage.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <p class="section-kicker">Admin Console</p>
+        <h2>用户与平台管理</h2>
+      </div>
+      <p>超级管理员：${ADMIN_EMAIL}</p>
+    </div>
+    <section class="admin-metrics">
+      <div><strong>${state.users.length}</strong><span>登记用户</span></div>
+      <div><strong>${activeUsers}</strong><span>已开通</span></div>
+      <div><strong>${pendingUsers}</strong><span>待处理</span></div>
+      <div><strong>${resetUsers}</strong><span>找回申请</span></div>
+      <div><strong>${totalDocs}</strong><span>可见文档</span></div>
+    </section>
+    ${reveal}
+    <section class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>邮箱</th>
+            <th>角色</th>
+            <th>状态</th>
+            <th>注册时间</th>
+            <th>最近登录</th>
+            <th>登录</th>
+            <th>访问</th>
+            <th>文档数量</th>
+            <th>话题数量</th>
+            <th>已删除文档</th>
+            <th>已删除话题</th>
+            <th>找回</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    </section>
+  `;
+
+  els.adminPage.querySelectorAll("[data-user-action='activate']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const isReset = button.textContent.includes("重置");
+      const ok = await confirmAction({
+        title: isReset ? "重置用户密码" : "生成初始密码",
+        message: isReset ? "确认为该用户重置密码吗？旧密码将不能继续使用。" : "确认为该用户生成初始密码吗？生成后请复制给对方。",
+        confirmText: isReset ? "确认重置" : "确认生成",
+      });
+      if (ok) {
+        await activateUser(button.dataset.emailKey, isReset ? "reset" : "initial");
+      }
+    });
+  });
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "刚刚";
+  }
+  const date = new Date(value);
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatVersionDate(version) {
+  if (!isAdmin()) {
+    return version.date;
+  }
+  const date = new Date(version.updatedAt || `${version.date}T00:00:00+08:00`);
+  if (Number.isNaN(date.getTime())) {
+    return version.date;
+  }
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  const sec = String(date.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
+}
+
+async function loadDocumentIntoWorkspace(id) {
+  const doc = state.documents.find((item) => item.id === id);
+  if (!doc) {
+    return;
+  }
+  const now = new Date().toISOString();
+  const studiedDoc = { ...doc, lastStudiedAt: now };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(studiedDoc));
+  state.currentDocId = doc.id;
+  state.lastViewedDocId = doc.id;
+  state.fileName = doc.fileName || doc.title;
+  state.rawText = doc.rawText || "";
+  state.analysis = doc.analysis || analyzeText(state.rawText);
+  state.activeTopic = 0;
+  state.drillStack = [];
+  setUploadLocked(true);
+  els.docNameInput.value = doc.title || "";
+  renderCategoryControls();
+  els.docCategorySelect.value = doc.categoryId || "";
+  els.tagInput.value = (doc.tags || []).join(", ");
+  els.sourceText.value = state.rawText;
+  renderAnalysis();
+  renderDrillEmpty();
+  await loadDocuments();
+  switchModule("learning");
+  switchStudyView("analysis");
+  els.parseHint.textContent = `已切换到：${doc.title}`;
+}
+
+function openDrill(question, topic) {
+  if (!question || !topic) {
+    return;
+  }
+  state.drillStack = [buildDrillNode(question, topic, 1)];
+  renderDrillPage();
+  switchModule("learning");
+  switchStudyView("drill");
+}
+
+function continueDrill(question) {
+  const current = state.drillStack[state.drillStack.length - 1];
+  if (!current) {
+    return;
+  }
+  state.drillStack.push(buildDrillNode(question, current.topic, current.depth + 1));
+  renderDrillPage();
+  switchModule("learning");
+  switchStudyView("drill");
+}
+
+function buildDrillNode(question, topic, depth) {
+  return {
+    question,
+    topic,
+    depth,
+    why: buildDrillWhy(question, topic),
+    framework: buildDrillFramework(question, topic),
+    evidence: topic.evidence.slice(0, 3),
+    exercise: buildDrillExercise(question, topic),
+    nextQuestions: buildNextQuestions(question, topic, depth),
+  };
+}
+
+function buildDrillWhy(question, topic) {
+  if (/矛盾|本质|真实/.test(question)) {
+    return `这个问题的价值，是逼你把“${topic.category.name}”从观点层继续下探到矛盾层。只有说清楚矛盾，CEO 的做法才不是一句正确的话，而是一套能迁移的判断方法。`;
+  }
+  if (/关键|动作|忽略/.test(question)) {
+    return `这个问题把注意力放在动作上：同样的管理理念，不同动作会产生完全不同的组织结果。学习 CEO 讲话，关键不是记住结论，而是找出哪个动作让结论成立。`;
+  }
+  return `这个问题用于判断方法的适用边界。你不是把 CEO 的话原样搬走，而是理解它在什么条件下有效、迁移时需要改哪一层。`;
+}
+
+function buildDrillFramework(question, topic) {
+  return [
+    `先定义问题：这是不是一个${topic.category.name}问题，还是被包装成${topic.category.name}的其他问题？`,
+    `再找矛盾：CEO 的原文里，哪一组冲突最明显，例如长期与短期、总部与一线、经验与数据、速度与质量？`,
+    "然后看机制：讲话中有没有把个人判断沉淀为流程、数据、激励或组织共识？",
+    "最后做迁移：换到你的业务场景时，保留底层逻辑，调整具体做法。",
+  ];
+}
+
+function buildDrillExercise(question, topic) {
+  return [
+    `用一句话写下你对“${question}”的当前答案。`,
+    "从原文依据里选一句最能支撑答案的话，解释它为什么关键。",
+    "把答案转成一个下周可执行动作，并明确一个反馈指标。",
+  ];
+}
+
+function buildNextQuestions(question, topic, depth) {
+  const categoryName = topic.category.name;
+  const templates = [
+    `如果 CEO 重新回答这个问题，他会先看哪三个事实？`,
+    `这个${categoryName}问题背后，最大的利益冲突或认知冲突是什么？`,
+    `哪些做法只是表层动作，哪些才是能复制的底层机制？`,
+    `如果把它迁移到我的团队，第一步最小试点应该怎么设计？`,
+    `这个方法在什么情况下会失效，我需要提前设置什么保护栏？`,
+  ];
+  const offset = Math.min(depth - 1, 2);
+  return templates.slice(offset, offset + 3);
+}
+
+function renderDrillPage() {
+  const current = state.drillStack[state.drillStack.length - 1];
+  if (!current) {
+    renderDrillEmpty();
+    return;
+  }
+
+  const trail = state.drillStack
+    .map((item, index) => `<button class="trail-button" type="button" data-depth="${index}">${index + 1}. ${escapeHtml(item.question)}</button>`)
+    .join("");
+  const evidence = current.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const framework = current.framework.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const exercise = current.exercise.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const next = current.nextQuestions
+    .map((item, index) => `
+      <button class="next-question" type="button" data-next-index="${index}">
+        <span>继续分析</span>
+        <strong>${escapeHtml(item)}</strong>
+      </button>
+    `)
+    .join("");
+
+  els.drillPage.innerHTML = `
+    <div class="drill-hero">
+      <p class="section-kicker">话题分析 · 第 ${current.depth} 层</p>
+      <h2>${escapeHtml(current.question)}</h2>
+      <div class="topic-meta">
+        <span class="pill">来源话题：${escapeHtml(current.topic.title)}</span>
+        <span class="pill">类型：${escapeHtml(current.topic.category.name)}</span>
+        <button class="drill-back" type="button">回到话题文章</button>
+      </div>
+    </div>
+    <div class="drill-trail">${trail}</div>
+    ${drillBlock("为什么要分析这个问题", `<p>${escapeHtml(current.why)}</p>`)}
+    ${drillBlock("回到原文", `<ul>${evidence}</ul>`)}
+    ${drillBlock("拆解框架", `<ol>${framework}</ol>`)}
+    ${drillBlock("学习练习", `<ol>${exercise}</ol>`)}
+    <section class="drill-block">
+      <h3>下一步分析</h3>
+      <div class="next-grid">${next}</div>
+    </section>
+  `;
+
+  els.drillPage.querySelectorAll(".next-question").forEach((button) => {
+    button.addEventListener("click", () => {
+      continueDrill(current.nextQuestions[Number(button.dataset.nextIndex)]);
+    });
+  });
+  els.drillPage.querySelectorAll(".trail-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.drillStack = state.drillStack.slice(0, Number(button.dataset.depth) + 1);
+      renderDrillPage();
+    });
+  });
+  els.drillPage.querySelector(".drill-back").addEventListener("click", () => switchStudyView("analysis"));
+}
+
+function drillBlock(title, body) {
+  return `
+    <section class="drill-block">
+      <h3>${escapeHtml(title)}</h3>
+      ${body}
+    </section>
+  `;
+}
+
+function renderDrillEmpty() {
+  els.drillPage.innerHTML = `<p class="empty-state">选择一个话题后，这里会展示可深入阅读的内容。</p>`;
+}
+
+function renderQuotes(quotes) {
+  if (!els.quoteList) {
+    return;
+  }
+  els.quoteList.innerHTML = "";
+  if (!quotes.length) {
+    els.quoteList.innerHTML = `<p class="empty-state">这里会沉淀最值得反复学习的原文句子。</p>`;
+    return;
+  }
+  quotes.forEach((quote) => {
+    const block = document.createElement("blockquote");
+    block.className = "quote-item";
+    block.textContent = quote;
+    els.quoteList.appendChild(block);
+  });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) {
+    return CSS.escape(String(value));
+  }
+  return String(value).replace(/["\\]/g, "\\$&");
+}
+
+async function handleFile(file) {
+  if (state.uploadLocked) {
+    setAnalysisProgress("已锁定", Number(els.analysisProgressPercent?.textContent?.replace("%", "") || 0), "当前已有材料，请点击“重置”后再重新上传。");
+    return;
+  }
+  state.currentDocId = "";
+  state.fileName = file.name;
+  els.docNameInput.value = file.name.replace(/\.[^.]+$/, "");
+  els.parseHint.textContent = `正在读取：${file.name}`;
+
+  try {
+    if (file.name.toLowerCase().endsWith(".docx")) {
+      const buffer = await file.arrayBuffer();
+      state.rawText = await extractDocxText(buffer);
+    } else {
+      state.rawText = await file.text();
+    }
+    els.sourceText.value = state.rawText;
+    const previewAnalysis = analyzeText(state.rawText);
+    if (!els.tagInput.value.trim() && previewAnalysis.suggestedTags?.length) {
+      els.tagInput.value = previewAnalysis.suggestedTags.join(", ");
+    }
+    renderOriginalText(state.rawText);
+    setUploadLocked(true);
+    els.parseHint.textContent = `已读取：${file.name}，已识别核心标签，可选择分类后点击“执行”。`;
+  } catch (error) {
+    console.error(error);
+    els.parseHint.textContent = `读取失败：${error.message}`;
+  }
+}
+
+async function handleFiles(files) {
+  const list = Array.from(files || []).filter(Boolean);
+  if (!list.length) {
+    return;
+  }
+  if (state.isAnalyzing || state.uploadLocked) {
+    setUploadLog("分析中", "大模型正在执行分析，暂时不能继续上传。");
+    return;
+  }
+  if (state.draftUploadItems.length + state.uploadItems.length + list.length > MAX_UPLOAD_FILES) {
+    setUploadLog("超过限制", `最多保留 ${MAX_UPLOAD_FILES} 份待处理材料，当前已有 ${state.draftUploadItems.length + state.uploadItems.length} 份。`);
+    if (els.fileInput) {
+      els.fileInput.value = "";
+    }
+    return;
+  }
+  const oversized = list.find((file) => file.size > MAX_UPLOAD_FILE_SIZE);
+  if (oversized) {
+    setUploadLog("文件过大", `${oversized.name} 为 ${formatFileSize(oversized.size)}，单个文件不能超过 50MB。`);
+    if (els.fileInput) {
+      els.fileInput.value = "";
+    }
+    return;
+  }
+  state.uploadBatchSaved = false;
+  state.uploadAnalysisCompleted = false;
+  state.currentDocId = "";
+  state.fileName = [...state.draftUploadItems.map((item) => item.fileName), ...list.map((file) => file.name)].join("、");
+  setUploadLog("读取材料", `正在读取 ${list.length} 个材料。最多 ${MAX_UPLOAD_FILES} 份，单个文件不超过 50MB。`);
+  try {
+    for (let index = 0; index < list.length; index += 1) {
+      const file = list[index];
+      let rawText = "";
+      if (file.name.toLowerCase().endsWith(".docx")) {
+        const buffer = await file.arrayBuffer();
+        rawText = await extractDocxText(buffer);
+      } else {
+        rawText = await file.text();
+      }
+      const nextItem = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        fileName: file.name,
+        fileSize: file.size,
+        title: file.name.replace(/\.[^.]+$/, ""),
+        rawText,
+        wordCount: normalizeText(rawText).length,
+        materialSourceId: "",
+        materialTypeId: "",
+        selected: true,
+        overwrite: false,
+      };
+      nextItem.fileFingerprint = materialFingerprint(nextItem.fileName, nextItem.fileSize, nextItem.rawText);
+      const duplicateDoc = findDuplicateDocument(nextItem);
+      if (duplicateDoc) {
+        nextItem.existingDocId = duplicateDoc.id;
+        nextItem.existingDocTitle = duplicateDoc.title;
+      }
+      state.draftUploadItems.push(nextItem);
+      setUploadLog("读取材料", duplicateDoc ? `已读取 ${index + 1}/${list.length}：${file.name}，发现个人历史同名/同内容材料。` : `已读取 ${index + 1}/${list.length}：${file.name}`);
+    }
+    const combinedText = state.draftUploadItems.map((item) => `【${item.title}】\n${item.rawText}`).join("\n\n");
+    state.rawText = combinedText;
+    els.sourceText.value = combinedText;
+    els.docNameInput.value = state.draftUploadItems.length === 1 ? state.draftUploadItems[0].title : `批量材料 ${state.draftUploadItems.length} 篇`;
+    renderUploadMaterialList();
+    setUploadLocked(false);
+    setUploadLog("待保存", `已读取 ${state.draftUploadItems.length} 个材料，请逐份选择资料来源和材料场景并点击保存。`);
+  } catch (error) {
+    setUploadLog("读取失败", `读取失败：${error.message}`);
+  } finally {
+    if (els.fileInput) {
+      els.fileInput.value = "";
+    }
+  }
+}
+
+function readUInt16(data, offset) {
+  return data[offset] | (data[offset + 1] << 8);
+}
+
+function readUInt32(data, offset) {
+  return (
+    data[offset] |
+    (data[offset + 1] << 8) |
+    (data[offset + 2] << 16) |
+    (data[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function findEndOfCentralDirectory(data) {
+  for (let offset = data.length - 22; offset >= 0; offset -= 1) {
+    if (readUInt32(data, offset) === 0x06054b50) {
+      return offset;
+    }
+  }
+  throw new Error("无法识别 docx 文件结构。");
+}
+
+function decodeBytes(bytes) {
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function parseZipEntries(data) {
+  const eocd = findEndOfCentralDirectory(data);
+  const entryCount = readUInt16(data, eocd + 10);
+  const centralOffset = readUInt32(data, eocd + 16);
+  const entries = [];
+  let offset = centralOffset;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (readUInt32(data, offset) !== 0x02014b50) {
+      throw new Error("docx 中央目录损坏。");
+    }
+
+    const method = readUInt16(data, offset + 10);
+    const compressedSize = readUInt32(data, offset + 20);
+    const uncompressedSize = readUInt32(data, offset + 24);
+    const fileNameLength = readUInt16(data, offset + 28);
+    const extraLength = readUInt16(data, offset + 30);
+    const commentLength = readUInt16(data, offset + 32);
+    const localOffset = readUInt32(data, offset + 42);
+    const nameStart = offset + 46;
+    const name = decodeBytes(data.slice(nameStart, nameStart + fileNameLength));
+
+    entries.push({
+      name,
+      method,
+      compressedSize,
+      uncompressedSize,
+      localOffset,
+    });
+
+    offset = nameStart + fileNameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+async function inflateRaw(bytes) {
+  if (!("DecompressionStream" in window)) {
+    throw new Error("当前浏览器不支持离线解压 docx，请换用 Chrome/Edge，或粘贴正文。");
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function readZipFile(data, entry) {
+  const offset = entry.localOffset;
+  if (readUInt32(data, offset) !== 0x04034b50) {
+    throw new Error(`无法读取文件：${entry.name}`);
+  }
+
+  const fileNameLength = readUInt16(data, offset + 26);
+  const extraLength = readUInt16(data, offset + 28);
+  const dataStart = offset + 30 + fileNameLength + extraLength;
+  const compressed = data.slice(dataStart, dataStart + entry.compressedSize);
+
+  if (entry.method === 0) {
+    return compressed;
+  }
+  if (entry.method === 8) {
+    return inflateRaw(compressed);
+  }
+  throw new Error(`不支持的 docx 压缩方式：${entry.method}`);
+}
+
+async function extractDocxText(buffer) {
+  const data = new Uint8Array(buffer);
+  const entries = parseZipEntries(data);
+  const documentEntry = entries.find((entry) => entry.name === "word/document.xml");
+  if (!documentEntry) {
+    throw new Error("没有找到 word/document.xml。");
+  }
+
+  const xmlBytes = await readZipFile(data, documentEntry);
+  const xml = decodeBytes(xmlBytes);
+  return extractTextFromDocumentXml(xml);
+}
+
+function extractTextFromDocumentXml(xml) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, "application/xml");
+  const paragraphs = [...doc.getElementsByTagNameNS("*", "p")];
+  const lines = paragraphs
+    .map((paragraph) => {
+      const pieces = [...paragraph.getElementsByTagNameNS("*", "t")].map((node) => node.textContent || "");
+      return pieces.join("");
+    })
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    const textNodes = [...doc.getElementsByTagNameNS("*", "t")].map((node) => node.textContent || "");
+    return normalizeText(textNodes.join(""));
+  }
+
+  return normalizeText(lines.join("\n\n"));
+}
+
+function startAnalysisTicker(item, index, total, skillDisplay = "话题拆解 SKILL") {
+  const messages = [
+    "正在等待大模型返回结构化 JSON。",
+    "正在拆解话题、证据和问题实质。",
+    "正在生成 CEO 解法、理论锚点和案例对照。",
+    "长文分析可能需要更久，请保持页面打开。",
+  ];
+  let tick = 0;
+  return window.setInterval(() => {
+    const percent = Math.min(78, 55 + Math.round(((index + 0.35) / Math.max(1, total)) * 22) + tick);
+    setAnalysisProgress("模型分析", percent, `第 ${index + 1}/${total} 份：${item.title}，使用 ${skillDisplay}，${messages[tick % messages.length]}`);
+    tick += 1;
+  }, 7000);
+}
+
+async function runAnalyze() {
+  if (state.draftUploadItems.length) {
+    setAnalysisProgress("未保存", 0, "请先点击保存，把本次上传材料归入下方待分析清单后再执行分析。");
+    return;
+  }
+  if (!state.uploadItems.length) {
+    setAnalysisProgress("未就绪", 0, "请先上传材料并保存到待分析清单。");
+    return;
+  }
+  const analyzedItems = selectedUploadItems();
+  if (!analyzedItems.length) {
+    setAnalysisProgress("未选择", 0, "请至少勾选一份需要执行分析的材料。");
+    return;
+  }
+  if (analyzedItems.some((item) => !uploadItemReady(item))) {
+    setAnalysisProgress("未就绪", 0, "请先为勾选的材料选择资料来源和材料场景。");
+    return;
+  }
+  state.rawText = analyzedItems.map((item) => `【${item.title}】\n${item.rawText}`).join("\n\n");
+  const skillPlan = analyzedItems.map((item, index) => `${index + 1}. ${item.title} → ${uploadItemSkillDisplay(item)}`);
+  const uniqueSkillNames = [...new Set(analyzedItems.map((item) => uploadItemSkillDisplay(item)))];
+  resetAnalysisLog();
+  setAnalysisProgress("整理原文", 10, `正在整理原文，本次将使用 ${uniqueSkillNames.join("、")} 调用 DeepSeek。`);
+  appendAnalysisLog(`本次执行 SKILL：${skillPlan.join("；")}`);
+  if (els.analysisSourceBadge) {
+    els.analysisSourceBadge.textContent = "分析中";
+    els.analysisSourceBadge.dataset.source = "progress";
+  }
+  state.isAnalyzing = true;
+  state.allowAnalysisBackground = false;
+  state.analysisAbortController = new AbortController();
+  sessionStorage.setItem(ANALYSIS_RUNNING_KEY, state.currentUser?.emailKey || "running");
+  setUploadLocked(true);
+  els.analyzeBtn.disabled = true;
+  renderUploadMaterialList();
+  renderPendingUploadMaterialList();
+  state.activeTopic = 0;
+  state.drillStack = [];
+  try {
+    setAnalysisProgress("连接模型", 25, "正在连接 DeepSeek。");
+    setAnalysisProgress("模型分析", 55, "DeepSeek 正在阅读原文并生成结构化拆解，长文可能需要等待。");
+    const itemResults = [];
+    for (let index = 0; index < analyzedItems.length; index += 1) {
+      const item = analyzedItems[index];
+      const itemType = materialTypeByKey(item.materialTypeId, item.materialTypeName);
+      const itemSkill = currentTopicSkill(itemType?.id || item.materialTypeId || "type-executive-view");
+      const itemSkillDisplay = skillDisplayName(itemSkill, "话题拆解 SKILL.md");
+      setAnalysisProgress("模型分析", 55 + Math.round((index / Math.max(1, analyzedItems.length)) * 20), `正在分析第 ${index + 1}/${analyzedItems.length} 份资料：${item.title}，使用 ${itemSkillDisplay}`);
+      appendAnalysisLog(`调用大模型：${item.title} 使用 ${itemSkillDisplay}`);
+      const ticker = startAnalysisTicker(item, index, analyzedItems.length, itemSkillDisplay);
+      let analysis;
+      try {
+        analysis = await analyzeWithDeepSeek(item.rawText || "", { signal: state.analysisAbortController.signal, skill: itemSkill });
+      } finally {
+        window.clearInterval(ticker);
+      }
+      itemResults.push({ item: { ...item, skill: itemSkill }, analysis });
+      appendAnalysisLog(`已完成第 ${index + 1}/${analyzedItems.length} 份资料：${item.title}`);
+      if (state.analysisAbortController.signal.aborted) {
+        throw new Error("本次分析已停止。");
+      }
+    }
+    const merged = mergeTopicAnalyses(itemResults);
+    state.analysis = merged.analysis;
+    setAnalysisProgress("解析结果", 82, "DeepSeek 已返回，正在解析结构化结果。");
+    const savedDocs = [];
+    for (const entry of itemResults) {
+      const doc = await saveAnalyzedDocument(entry.item, entry.analysis);
+      if (doc) {
+        savedDocs.push(doc);
+      }
+    }
+    renderAnalysis();
+    renderDrillEmpty();
+    const analyzedKeys = new Set(analyzedItems.map(pendingUploadKey));
+    state.uploadItems = removeCompletedPendingUploads(state.uploadItems.filter((item) => !analyzedKeys.has(pendingUploadKey(item))));
+    state.uploadAnalysisCompleted = !state.uploadItems.length;
+    state.uploadBatchSaved = Boolean(state.uploadItems.length);
+    state.rawText = "";
+    if (els.sourceText) {
+      els.sourceText.value = state.rawText;
+    }
+    await persistPendingUploads();
+    sessionStorage.setItem(ANALYSIS_COMPLETED_REDIRECT_KEY, "true");
+    setAnalysisProgress("完成", 100, `共计处理 ${savedDocs.length || analyzedItems.length} 份材料，已分析完成，请进入话题列表查看`);
+    await confirmAction({
+      title: "分析完成",
+      message: `共计处理 ${savedDocs.length || analyzedItems.length} 份材料，已分析完成，请进入话题列表查看。`,
+      confirmText: "确认",
+    });
+    sessionStorage.removeItem(ANALYSIS_COMPLETED_REDIRECT_KEY);
+    renderUploadMaterialList();
+    renderPendingUploadMaterialList();
+    switchModule("learning");
+    switchStudyView("topicsHome");
+    renderTopicHome();
+  } catch (error) {
+    state.analysis = null;
+    renderDrillEmpty();
+    if (els.analysisSourceBadge) {
+      els.analysisSourceBadge.textContent = "失败";
+      els.analysisSourceBadge.dataset.source = "error";
+    }
+    const stopped = /已停止|aborted|abort/i.test(String(error.message || ""));
+    if (stopped) {
+      setAnalysisProgress("已停止", 0, "已停止本次执行分析。");
+    } else {
+      setAnalysisProgress("失败", 0, `DeepSeek 分析失败：${error.message}`);
+    }
+    state.isAnalyzing = false;
+    state.analysisAbortController = null;
+    sessionStorage.removeItem(ANALYSIS_RUNNING_KEY);
+    setUploadLocked(false);
+    renderUploadMaterialList();
+    renderPendingUploadMaterialList();
+    return;
+  }
+  state.isAnalyzing = false;
+  state.allowAnalysisBackground = false;
+  state.analysisAbortController = null;
+  sessionStorage.removeItem(ANALYSIS_RUNNING_KEY);
+  setUploadLocked(false);
+  renderUploadMaterialList();
+  renderPendingUploadMaterialList();
+  updateUploadButtons();
+}
+
+function switchModule(moduleName) {
+  const activeStudyView = document.querySelector(".study-view.is-active")?.id?.replace(/View$/, "") || "topicsHome";
+  els.moduleTabs.forEach((tab) => {
+    const isStudyTab = Boolean(tab.dataset.studyView);
+    const isActive = tab.dataset.module === moduleName && (!isStudyTab || tab.dataset.studyView === activeStudyView);
+    tab.classList.toggle("is-active", isActive);
+  });
+  document.querySelectorAll(".module-view").forEach((view) => {
+    view.classList.toggle("is-active", view.id === `${moduleName}Module`);
+  });
+  if (moduleName === "config") {
+    renderConfigPage();
+  }
+  if (moduleName === "materials") {
+    renderMaterialManagePage();
+  }
+  if (moduleName === "skill") {
+    renderTopicSkillPage();
+  }
+  if (moduleName === "recycle") {
+    renderRecyclePage();
+  }
+  if (moduleName === "version") {
+    renderVersionPage();
+  }
+}
+
+function switchStudyView(viewName) {
+  const viewMap = {
+    overview: "analysis",
+    topics: "analysis",
+    materialOverview: "materialOverview",
+    upload: "upload",
+    materialLibrary: "materialLibrary",
+    library: "library",
+    analysis: "analysis",
+    drill: "drill",
+    quotes: "quotes",
+    method: "method",
+  };
+  const normalizedView = viewMap[viewName] || viewName;
+  els.studyTabs.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.studyView === normalizedView);
+  });
+  document.querySelectorAll(".study-view").forEach((view) => {
+    view.classList.toggle("is-active", view.id === `${normalizedView}View`);
+  });
+  const learningActive = document.querySelector("#learningModule")?.classList.contains("is-active");
+  els.moduleTabs.forEach((tab) => {
+    if (tab.dataset.studyView) {
+      tab.classList.toggle("is-active", Boolean(learningActive) && tab.dataset.studyView === normalizedView);
+    }
+  });
+}
+
+function buildMarkdown() {
+  if (!state.analysis) {
+    return "";
+  }
+  const { overview, activeCategories, topics, quotes, deepeningModes: modelDeepeningModes } = state.analysis;
+  const modes = modelDeepeningModes || deepeningModes;
+  const lines = [
+    `# ${state.fileName || "CEO 讲话拆解"}`,
+    "",
+    "## 一、核心思想一句话概括",
+    overview.oneLine,
+    "",
+    "## 二、逻辑框架",
+    overview.logicLine,
+    "",
+    "## 三、观点分类",
+  ];
+
+  activeCategories
+    .sort((a, b) => b.items.length - a.items.length)
+    .forEach((group) => {
+      lines.push("", `### ${group.category.name}`);
+      pickTopSentences(group.items, 5).forEach((sentence) => lines.push(`- ${sentence}`));
+    });
+
+  lines.push("", "## 四、金句清单");
+  quotes.forEach((quote) => lines.push(`- ${quote}`));
+
+  lines.push("", "## 五、问题化拆解");
+  topics.forEach((topic) => {
+    lines.push(
+      "",
+      `### 问题${topic.index}：${topic.title}`,
+      `- 难度等级：${"★".repeat(topic.difficulty)}${"☆".repeat(5 - topic.difficulty)}`,
+      `- 问题类型：${normalizeProblemTypes(topic.problemTypes, topic.categoryName, topic.category?.name).join(" / ")}`,
+      `- 问题实质：${topic.problemEssence || topic.essence || ""}`,
+      `- 表面现象：${topic.surfacePhenomenon || ""}`,
+      "- 深层本质：",
+      ...(topic.deepNature || []).map((item) => `  - ${item.title}：${item.explanation}｜案例：${item.case}`),
+      "- CEO的解法与关键动作：",
+      `  - 核心判断：${topic.ceoSolution?.coreJudgment || ""}`,
+      ...(topic.ceoSolution?.verificationMethods || []).map((item) => `  - 验证方法：${item}`),
+      ...(topic.ceoSolution?.keyActions || []).map((item) => `  - 关键行动：${item}`),
+      "- 底层逻辑（理论锚点）：",
+      ...(topic.theoryAnchors?.linkedTheoryModel || []).map((item) => `  - 关联理论/模型：${item}`),
+      ...(topic.theoryAnchors?.logicDissection || []).map((item) => `  - 逻辑拆解：${item}`),
+      "- 案例对照（跨时空验证）：",
+      `  - 反例：${topic.caseComparison?.counterexample || ""}`,
+      `  - 正例：${topic.caseComparison?.positiveExample || ""}`,
+      `  - 历史类比：${topic.caseComparison?.historicalAnalogy || ""}`,
+      "- 更多解法与选择（拓展思维）：",
+      ...(topic.moreSolutions || []).flatMap((item, idx) => [
+        `  - 解法${idx + 1}：${item.title || ""}`,
+        ...(item.steps || []).map((step) => `    - ${step}`),
+        `    - 适用场景：${item.applicability || ""}`,
+      ]),
+      "- 可迁移的启示：",
+      `  - 对团队的启示：${topic.transferableInsights?.team || ""}`,
+      `  - 对读者的行动建议：${topic.transferableInsights?.reader || ""}`,
+    );
+  });
+
+  lines.push("", "## 六、演化式深化");
+  modes.forEach((mode) => {
+    lines.push("", `### ${mode.title}`, `- 核心目标：${mode.goal}`, "- 核心问题：");
+    mode.questions.forEach((question) => lines.push(`  - ${question}`));
+  });
+
+  return lines.join("\n");
+}
+
+function exportMarkdown() {
+  const markdown = buildMarkdown();
+  if (!markdown) {
+    els.parseHint.textContent = "请先完成拆解，再导出 Markdown。";
+    return;
+  }
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${(state.fileName || "ceo-speech-analysis").replace(/\.[^.]+$/, "")}-拆解.md`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function copyMarkdown() {
+  const markdown = buildMarkdown();
+  if (!markdown) {
+    els.parseHint.textContent = "请先完成拆解，再复制 Markdown。";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(markdown);
+    els.parseHint.textContent = "已复制 Markdown。";
+  } catch (error) {
+    const textarea = document.createElement("textarea");
+    textarea.value = markdown;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    textarea.remove();
+    els.parseHint.textContent = ok ? "已复制 Markdown。" : "复制受浏览器限制，请使用导出。";
+  }
+}
+
+function resetResults() {
+  els.docTitle.textContent = "尚未分析材料";
+  els.oneLine.textContent = "上传 CEO 讲话后，这里会生成核心思想。";
+  els.logicLine.textContent = "系统会自动识别战略、数字化、AI、组织、流程、数据、激励、文化、领导力等维度。";
+  els.metricTopics.textContent = "0";
+  els.metricCategories.textContent = "0";
+  els.metricQuotes.textContent = "0";
+  els.metricWords.textContent = "0";
+  els.categoryBoard.innerHTML = "";
+  els.topicList.innerHTML = "";
+  els.topicArticle.innerHTML = `<p class="empty-state">拆解完成后，选择左侧话题查看学习文章。</p>`;
+  renderOriginalText("");
+  renderDrillEmpty();
+  switchModule("learning");
+  switchStudyView("topicsHome");
+}
+
+function clearWorkspace() {
+  state.fileName = "";
+  state.rawText = "";
+  state.draftUploadItems = [];
+  state.uploadBatchSaved = false;
+  state.uploadAnalysisCompleted = false;
+  state.analysis = null;
+  state.activeTopic = 0;
+  state.currentDocId = "";
+  state.activeTopicRef = null;
+  state.drillStack = [];
+  resetAnalysisLog();
+  els.docNameInput.value = "";
+  els.docCategorySelect.value = "";
+  if (els.materialSourceSelect) {
+    els.materialSourceSelect.value = state.materialSources[0]?.id || "";
+  }
+  if (els.materialTypeSelect) {
+    els.materialTypeSelect.value = state.materialTypes[0]?.id || "";
+  }
+  els.tagInput.value = "";
+  els.sourceText.value = "";
+  els.fileInput.value = "";
+  setUploadLocked(false);
+  renderUploadMaterialList();
+  renderPendingUploadMaterialList();
+  resetResults();
+  setAnalysisProgress("未分析", 0, "已重置，可以重新上传材料。");
+  updateUploadButtons();
+  switchModule("learning");
+  switchStudyView("upload");
+}
+
+els.fileInput.addEventListener("change", (event) => {
+  if (state.uploadLocked) {
+    event.target.value = "";
+    setAnalysisProgress("分析中", Number(els.analysisProgressPercent?.textContent?.replace("%", "") || 0), "大模型正在执行分析，暂时不能继续上传。");
+    return;
+  }
+  handleFiles(event.target.files);
+});
+
+els.authTabs.forEach((tab) => {
+  tab.addEventListener("click", () => setAuthTab(tab.dataset.authTab));
+});
+
+els.registerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const ok = await confirmAction({
+      title: "登记试用",
+      message: "确认提交试用登记吗？提交后需要联系 Simon.Lv@fanruan.com 分配初始密码。",
+      confirmText: "确认登记",
+    });
+    if (ok) {
+      await registerUser(els.registerEmail.value);
+    }
+  } catch (error) {
+    showAuthMessage(`登记失败：${error.message}`, "error");
+  }
+});
+
+els.loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await login(els.loginEmail.value, els.loginPassword.value);
+    els.loginPassword.value = "";
+  } catch (error) {
+    showAuthMessage(`登录失败：${error.message}`, "error");
+  }
+});
+
+els.forgotForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const ok = await confirmAction({
+      title: "提交找回申请",
+      message: "确认提交密码找回申请吗？提交后管理员会在后台处理。",
+      confirmText: "确认提交",
+    });
+    if (ok) {
+      await requestPasswordReset(els.forgotEmail.value);
+      els.forgotEmail.value = "";
+    }
+  } catch (error) {
+    showAuthMessage(`提交失败：${error.message}`, "error");
+  }
+});
+
+els.accountBtn?.addEventListener("click", () => {
+  guardAnalysisNavigation(() => switchModule("config"));
+});
+
+els.logoutBtn.addEventListener("click", () => guardAnalysisNavigation(async () => {
+  const ok = await confirmAction({
+    title: "退出登录",
+    message: "确认退出当前账号吗？",
+    confirmText: "确认退出",
+  });
+  if (ok) {
+    await logEvent("logout");
+    clearSession();
+    state.currentUser = null;
+    clearWorkspace();
+    state.documents = [];
+    renderDocumentLibrary();
+    renderAuthGate();
+  }
+}));
+
+["dragenter", "dragover"].forEach((name) => {
+  els.dropZone.addEventListener(name, (event) => {
+    event.preventDefault();
+    els.dropZone.classList.add("is-dragging");
+  });
+});
+
+["dragleave", "drop"].forEach((name) => {
+  els.dropZone.addEventListener(name, (event) => {
+    event.preventDefault();
+    els.dropZone.classList.remove("is-dragging");
+  });
+});
+
+els.dropZone.addEventListener("drop", (event) => {
+  if (state.uploadLocked) {
+    setAnalysisProgress("分析中", Number(els.analysisProgressPercent?.textContent?.replace("%", "") || 0), "大模型正在执行分析，暂时不能继续上传。");
+    return;
+  }
+  handleFiles(event.dataTransfer.files);
+});
+
+els.analyzeBtn.addEventListener("click", async () => {
+  const skillPlan = selectedUploadItems()
+    .map((item, index) => `${index + 1}. ${item.title || item.fileName}：${uploadItemSkillDisplay(item)}`)
+    .join("\n");
+  const ok = await confirmAction({
+    title: "执行材料分析",
+    message: `确认调用大模型执行分析吗？长文可能需要等待一段时间。\n\n本次执行 SKILL：\n${skillPlan || "请先选择待分析材料。"}`,
+    confirmText: "确认执行",
+  });
+  if (ok) {
+    runAnalyze();
+  }
+});
+els.saveUploadBtn?.addEventListener("click", async () => {
+  if (!state.draftUploadItems.length) {
+    setAnalysisProgress("未就绪", 0, "请先上传材料。");
+    return;
+  }
+  if (!uploadItemsReady()) {
+    setAnalysisProgress("未完善", 0, "请先为每份材料选择资料来源和材料场景。");
+    return;
+  }
+  const ok = await confirmAction({
+    title: "保存上传材料",
+    message: `确认保存 ${state.draftUploadItems.length} 份待分析材料吗？保存后会进入下方待分析清单，但不会立刻生成话题。`,
+    confirmText: "确认保存",
+  });
+  if (!ok) {
+    return;
+  }
+  const savedItems = state.draftUploadItems.map((item) => ({ ...item, selected: true }));
+  state.uploadItems = [...state.uploadItems, ...savedItems];
+  state.draftUploadItems = [];
+  state.uploadBatchSaved = true;
+  state.uploadAnalysisCompleted = false;
+  state.rawText = "";
+  if (els.sourceText) {
+    els.sourceText.value = "";
+  }
+  setUploadLocked(false);
+  renderUploadMaterialList();
+  renderPendingUploadMaterialList();
+  await persistPendingUploads();
+  setUploadLog("已保存", "材料已保存到待分析清单，请在下方勾选后执行分析。");
+});
+els.deleteAnalyzedMaterialsBtn?.addEventListener("click", async () => {
+  const ids = selectedAnalyzedMaterialIds();
+  if (!ids.length) {
+    return;
+  }
+  const ok = await confirmAction({
+    title: "删除已分析材料",
+    message: `确认删除选中的 ${ids.length} 份材料吗？相关话题会从话题列表移除，并进入管理员回收站。`,
+    confirmText: "确认删除",
+    tone: "danger",
+  });
+  if (!ok) {
+    return;
+  }
+  for (const id of ids) {
+    await deleteDocument(id);
+  }
+  renderAnalyzedMaterialList();
+});
+els.newMaterialBtn?.addEventListener("click", () => guardAnalysisNavigation(openNewMaterialFlow));
+els.topNewMaterialBtn?.addEventListener("click", () => guardAnalysisNavigation(openNewMaterialFlow));
+els.sampleBtn?.addEventListener("click", () => {
+  if (state.uploadLocked) {
+    setAnalysisProgress("已锁定", Number(els.analysisProgressPercent?.textContent?.replace("%", "") || 0), "当前已有材料，请点击“重置”后再载入示例。");
+    return;
+  }
+  state.currentDocId = "";
+  state.fileName = "CEO讲话示例.txt";
+  els.docNameInput.value = "CEO 讲话示例";
+  els.docCategorySelect.value = "preset-strategy";
+  els.tagInput.value = "战略, 数字化, AI, 组织管理";
+  els.sourceText.value = sampleText;
+  renderOriginalText(sampleText);
+  setUploadLocked(true);
+  els.parseHint.textContent = "已载入示例文本，可点击“执行”。";
+});
+els.clearBtn.addEventListener("click", async () => {
+  const ok = await confirmAction({
+    title: "重置上传区",
+    message: "确认重置当前上传区吗？重置后才可以重新上传材料。",
+    confirmText: "确认重置",
+    tone: "danger",
+  });
+  if (ok) {
+    clearWorkspace();
+  }
+});
+
+els.topicSearchInput?.addEventListener("input", (event) => {
+  state.topicSearch = event.target.value;
+  state.topicPage = 1;
+  renderTopicHome();
+});
+
+els.topicSourceFilter?.addEventListener("change", (event) => {
+  state.topicSourceFilter = event.target.value;
+  state.topicPage = 1;
+  renderTopicHome();
+});
+
+els.topicTypeFilter?.addEventListener("change", (event) => {
+  state.topicTypeFilter = event.target.value;
+  state.topicPage = 1;
+  renderTopicHome();
+});
+els.topicFavoriteFilter?.addEventListener("click", () => {
+  state.topicFavoriteOnly = !state.topicFavoriteOnly;
+  state.topicPage = 1;
+  if (els.topicFavoriteFilter) {
+    els.topicFavoriteFilter.dataset.active = String(state.topicFavoriteOnly);
+    els.topicFavoriteFilter.setAttribute("aria-pressed", String(state.topicFavoriteOnly));
+    const icon = els.topicFavoriteFilter.querySelector(".favorite-filter-icon");
+    const text = els.topicFavoriteFilter.querySelector(".favorite-filter-text");
+    if (icon) icon.textContent = state.topicFavoriteOnly ? "♥" : "♡";
+    if (text) text.textContent = state.topicFavoriteOnly ? "已收藏" : "收藏";
+  }
+  renderTopicHome();
+});
+els.topicOwnerFilter?.addEventListener("input", (event) => {
+  state.topicOwnerFilter = event.target.value;
+  state.topicPage = 1;
+  renderTopicHome();
+});
+els.exportBtn?.addEventListener("click", exportMarkdown);
+els.copyBtn?.addEventListener("click", copyMarkdown);
+
+els.moduleTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    guardAnalysisNavigation(() => {
+      switchModule(tab.dataset.module);
+      if (tab.dataset.studyView) {
+        switchStudyView(tab.dataset.studyView);
+        if (tab.dataset.studyView === "topicsHome") {
+          renderTopicHome();
+        }
+        if (tab.dataset.studyView === "materialOverview") {
+          renderMaterialOverviewPage();
+        }
+        if (tab.dataset.studyView === "materialLibrary") {
+          renderAnalyzedMaterialList();
+        }
+      }
+    });
+  });
+});
+
+els.librarySearch.addEventListener("input", (event) => {
+  state.librarySearch = event.target.value;
+  renderDocumentLibrary();
+});
+
+els.libraryTagSearch.addEventListener("input", (event) => {
+  state.libraryTagSearch = event.target.value;
+  renderDocumentLibrary();
+});
+
+els.libraryCategoryFilter.addEventListener("change", (event) => {
+  state.activeDocCategory = event.target.value;
+  renderDocumentLibrary();
+});
+
+els.libraryOwnerFilter.addEventListener("change", async (event) => {
+  state.activeOwner = event.target.value;
+  await loadDocuments();
+});
+
+els.resetFilterBtn.addEventListener("click", () => {
+  state.activeTag = "";
+  state.activeDocCategory = "";
+  state.librarySearch = "";
+  state.libraryTagSearch = "";
+  els.librarySearch.value = "";
+  els.libraryTagSearch.value = "";
+  els.libraryCategoryFilter.value = "";
+  if (isAdmin()) {
+    state.activeOwner = "all";
+    els.libraryOwnerFilter.value = "all";
+    loadDocuments();
+  }
+  renderDocumentLibrary();
+});
+
+renderDrillEmpty();
+restoreSession().catch((error) => {
+  renderAuthGate();
+  showAuthMessage(`系统初始化失败：${error.message}`, "error");
+});
