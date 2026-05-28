@@ -119,8 +119,8 @@ const SYSTEM_VERSIONS = [
 ];
 const ADMIN_EMAIL = "Simon.Lv@fanruan.com";
 const ADMIN_EMAIL_KEY = ADMIN_EMAIL.toLowerCase();
-const DEFAULT_ADMIN_PASSWORD = "Simon@2026#Admin";
 const SESSION_KEY = "ceo-speech-session";
+const ADMIN_BOOTSTRAP_PASSWORD_KEY = "talktoceo-admin-bootstrap-password";
 const FONT_SETTINGS_KEY = "talktoceo-font-settings";
 const FONT_SIZE_PRESETS = [
   { id: "xsmall", name: "较小", note: "紧凑阅读", bodySize: "14px", buttonSize: "13px", titleSize: "22px" },
@@ -1317,7 +1317,8 @@ async function ensureAdminUser() {
     return existing;
   }
   const now = new Date().toISOString();
-  const password = await hashPassword(DEFAULT_ADMIN_PASSWORD);
+  const bootstrapPassword = randomPassword();
+  const password = await hashPassword(bootstrapPassword);
   const admin = {
     email: ADMIN_EMAIL,
     emailKey: ADMIN_EMAIL_KEY,
@@ -1337,6 +1338,7 @@ async function ensureAdminUser() {
     initialPasswordGeneratedAt: now,
   };
   await putUser(admin);
+  sessionStorage.setItem(ADMIN_BOOTSTRAP_PASSWORD_KEY, bootstrapPassword);
   return admin;
 }
 
@@ -3019,6 +3021,10 @@ async function restoreSession() {
   const session = readSession();
   if (!session?.emailKey) {
     renderAuthGate();
+    const bootstrapPassword = sessionStorage.getItem(ADMIN_BOOTSTRAP_PASSWORD_KEY);
+    if (bootstrapPassword) {
+      showAuthMessage(`首次初始化管理员账号：${ADMIN_EMAIL}，本次初始密码：${bootstrapPassword}。登录后请立即修改密码。`, "success");
+    }
     return;
   }
   if (isSessionExpired(session)) {
