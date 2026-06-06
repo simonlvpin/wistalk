@@ -90,6 +90,7 @@ const SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.25", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训话题页面重构", changes: ["培训材料的话题解析不再沿用 CEO 高层讲话组织风格。", "培训话题改为按知识点/概念、讲解场景、注意问题、知识扩展、练习任务和整体逻辑组织。", "培训 SKILL 默认版本升级到 v1.2，刷新后话题页会按培训学习框架展示。"] },
   { version: "v1.8.24", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话知识点闭环", changes: ["培训讲话分析从课程报告改为知识点/概念驱动。", "每个知识点下沉到讲解场景、注意问题、行业案例扩展和知识延伸。", "培训分析增加整体逻辑总结与用户富文本笔记，支持保存和更新。", "培训 SKILL 默认版本升级到 v1.1，已分析培训材料会提示可按新 SKILL 刷新。"] },
   { version: "v1.8.23", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话分析 SKILL", changes: ["新增培训讲话资料类型，适配技术培训、业务培训、产品培训和方法论培训。", "新增培训讲话分析 SKILL.md，输出培训基础信息、学习目标、知识地图、关键概念、方法步骤、练习任务、误区纠偏、应用场景和后续计划。", "培训材料支持按需提炼话题，不再强行套高层视角文章结构。", "无话题但已完成分析的会议或培训材料，也可进入材料管理并参与 SKILL 刷新。"] },
   { version: "v1.8.22", date: "2026-05-28", updatedAt: "2026-05-28T13:08:00+08:00", title: "资料分类键值同步", changes: ["资料来源和资料类型统一按 id/name 键值引用。", "历史材料可按名称反查并补齐资料来源和类型 id。", "材料列表、材料管理、话题筛选和 SKILL 刷新候选统一使用键值解析。"] },
@@ -386,7 +387,7 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 ### 4.2 topics（可选）
 - 只有当培训中出现明确问题、能力短板、方法论选择、业务判断、组织协同或可迁移的学习命题时才输出。
 - 不要把普通知识点、工具菜单、操作提醒强行包装成管理话题。
-- 若输出 topics，每个话题仍按高层视角的话题文章结构，但标题和证据必须来自培训原文。
+- 若输出 topics，每个话题必须按培训学习框架组织：知识点/概念、讲解场景、注意问题、知识扩展、练习任务、整体逻辑和学习者收获。
 
 ## 5. 输出原则
 - 事实优先，所有内容基于原文。
@@ -1628,8 +1629,8 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
   return {
     ...DEFAULT_TOPIC_SKILL,
     id: isExecutive ? DEFAULT_TOPIC_SKILL.id : `topic-skill-default-${materialTypeId}`,
-    version: kind === "training" ? "v1.1" : DEFAULT_TOPIC_SKILL.version,
-    versionNumber: kind === "training" ? 2 : DEFAULT_TOPIC_SKILL.versionNumber,
+    version: kind === "training" ? "v1.2" : DEFAULT_TOPIC_SKILL.version,
+    versionNumber: kind === "training" ? 3 : DEFAULT_TOPIC_SKILL.versionNumber,
     name: skillNameForMaterialType(typeName, materialTypeId),
     summary: isExecutive
       ? DEFAULT_TOPIC_SKILL.summary
@@ -1649,7 +1650,7 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
       : kind === "meeting"
         ? ["初始版本：建立会议基础信息、决策、行动项、议题讨论、协作态势、风险依赖和待定问题的分析标准。"]
         : kind === "training"
-          ? ["v1.1：培训分析改为知识点/概念驱动，围绕讲解场景、注意问题、知识扩展、整体逻辑和用户笔记形成学习闭环。"]
+          ? ["v1.2：培训话题页面改为培训学习框架，围绕知识点/概念、讲解场景、注意问题、知识扩展、练习任务和整体逻辑组织。"]
         : [`初始版本：建立${typeName}材料的话题拆解 SKILL.md 基础模版。`],
     isPreset: true,
   };
@@ -4096,35 +4097,38 @@ ${text}
     "problemTypes": ["技术", "业务", "方法论"],
     "difficulty": 1,
     "evidence": [],
-    "problemEssence": "",
-    "surfacePhenomenon": "",
-    "deepNature": [
-      {"title": "认知维度", "explanation": "", "case": ""},
-      {"title": "方法维度", "explanation": "", "case": ""},
-      {"title": "迁移维度", "explanation": "", "case": ""}
-    ],
-    "ceoSolution": {
-      "coreJudgment": "",
-      "verificationMethods": ["", "", ""],
-      "keyActions": ["", "", ""]
-    },
-    "theoryAnchors": {
-      "linkedTheoryModel": ["", "", ""],
-      "logicDissection": ["", "", ""]
-    },
-    "caseComparison": {
-      "counterexample": "",
-      "positiveExample": "",
-      "historicalAnalogy": ""
-    },
-    "moreSolutions": [
-      {"title": "", "steps": ["", "", ""], "applicability": ""},
-      {"title": "", "steps": ["", "", ""], "applicability": ""},
-      {"title": "", "steps": ["", "", ""], "applicability": ""}
-    ],
-    "transferableInsights": {
-      "team": "",
-      "reader": ""
+    "trainingTopic": {
+      "knowledgeName": "",
+      "knowledgeType": "概念/知识点/方法/工具/流程",
+      "learningQuestion": "",
+      "teacherExplanation": "",
+      "scenarios": [{
+        "name": "",
+        "context": "",
+        "teacherExplanation": "",
+        "applicability": "",
+        "evidence": ""
+      }],
+      "attentionPoints": [{
+        "issue": "",
+        "whyItMatters": "",
+        "correction": "",
+        "evidence": ""
+      }],
+      "extensions": [{
+        "title": "",
+        "industryCase": "",
+        "relatedKnowledge": "",
+        "transferScenario": "",
+        "learningSuggestion": ""
+      }],
+      "practice": {
+        "task": "",
+        "steps": [],
+        "checkpoints": []
+      },
+      "logicSummary": "",
+      "learnerTakeaway": ""
     }
   }],
   "quotes": [],
@@ -4142,9 +4146,12 @@ ${text}
 7. 每个 knowledgeItem 必须包含注意问题：误区、风险、边界、易错点或应用前提；原文没直接说但可合理补充的，必须标注 [推断]。
 8. extensions 是大模型基于知识点和场景做的知识体系延伸，必须标注 [扩展]，可以包含行业案例、关联知识点、迁移场景和学习建议。
 9. overallLogic 必须总结整个培训的知识点整体逻辑，说明这些知识点如何构成学习路径和能力闭环。
-10. topics 只有在原文存在清晰可提炼的问题或方法论命题时才输出；没有就返回空数组。
-11. topics 中每个话题至少提供 2 条原文证据。
-12. language 必须中文，内容必须贴合原文；原文依据不能编造，扩展内容必须标注 [扩展]。
+10. topics 只有在原文存在清晰可提炼的知识点、概念、方法、工具、流程或训练命题时才输出；没有就返回空数组。
+11. 培训 topics 不能使用 CEO 高层讲话文章结构，不要输出 CEO 解法、毛选视角、战略/组织管理式文章。
+12. 每个 topic 必须围绕一个知识点/概念/方法来组织，并输出 trainingTopic。
+13. trainingTopic 必须包含：知识点名称、学习问题、老师怎么讲、讲解场景、注意问题、知识扩展、练习任务、整体逻辑和学习者收获。
+14. topics 中每个话题至少提供 2 条原文证据。
+15. language 必须中文，内容必须贴合原文；原文依据不能编造，扩展内容必须标注 [扩展]。
 ${skillInstruction}
   19. 这个培训讲话原文如下：
 ${text}
@@ -4324,6 +4331,7 @@ function normalizeDeepSeekAnalysis(raw, sourceText) {
             team: transferableInsights.team || buildTransferableInsights(category, Array.isArray(topic.evidence) ? topic.evidence : []).team,
             reader: transferableInsights.reader || buildTransferableInsights(category, Array.isArray(topic.evidence) ? topic.evidence : []).reader,
           },
+          trainingTopic: normalizeTrainingTopic(topic.trainingTopic || (topic.knowledgeName || topic.learningQuestion ? topic : null)),
         };
       })
     : [];
@@ -4515,6 +4523,48 @@ function normalizeTrainingAnalysis(input = null) {
     applicationScenarios: Array.isArray(input.applicationScenarios) ? input.applicationScenarios : [],
     followUpPlan: Array.isArray(input.followUpPlan) ? input.followUpPlan : [],
     topicExtractionNote: input.topicExtractionNote || "",
+  };
+}
+
+function normalizeTrainingTopic(input = null) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const normalizeList = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
+  const normalizeTextList = (value) => normalizeList(value).map((item) => String(item || "").trim()).filter(Boolean);
+  const practice = input.practice && typeof input.practice === "object" ? input.practice : {};
+  return {
+    knowledgeName: input.knowledgeName || input.name || "",
+    knowledgeType: input.knowledgeType || input.type || "知识点",
+    learningQuestion: input.learningQuestion || input.title || "",
+    teacherExplanation: input.teacherExplanation || input.originalExplanation || input.explanation || "",
+    scenarios: normalizeList(input.scenarios).map((scenario) => ({
+      name: scenario.name || scenario.title || "讲解场景",
+      context: scenario.context || "未提及",
+      teacherExplanation: scenario.teacherExplanation || scenario.explanation || "未提及",
+      applicability: scenario.applicability || "未提及",
+      evidence: scenario.evidence || "",
+    })),
+    attentionPoints: normalizeList(input.attentionPoints).map((point) => ({
+      issue: point.issue || point.risk || point.misunderstanding || "注意问题",
+      whyItMatters: point.whyItMatters || point.reason || "未提及",
+      correction: point.correction || point.solution || "未提及",
+      evidence: point.evidence || "",
+    })),
+    extensions: normalizeList(input.extensions).map((extension) => ({
+      title: extension.title || "知识延伸",
+      industryCase: extension.industryCase || extension.case || "未提及",
+      relatedKnowledge: extension.relatedKnowledge || "未提及",
+      transferScenario: extension.transferScenario || "未提及",
+      learningSuggestion: extension.learningSuggestion || "未提及",
+    })),
+    practice: {
+      task: practice.task || "",
+      steps: normalizeTextList(practice.steps),
+      checkpoints: normalizeTextList(practice.checkpoints),
+    },
+    logicSummary: input.logicSummary || "",
+    learnerTakeaway: input.learnerTakeaway || input.takeaway || "",
   };
 }
 
@@ -4800,6 +4850,7 @@ function materialSearchText(doc) {
 
 function topicSearchText(row) {
   const topic = row.topic || {};
+  const trainingTopic = topic.trainingTopic || {};
   return [
     row.displayIndex,
     row.title,
@@ -4808,6 +4859,16 @@ function topicSearchText(row) {
     topic.essence,
     topic.surfacePhenomenon,
     topic.sourceSummary,
+    trainingTopic.knowledgeName,
+    trainingTopic.knowledgeType,
+    trainingTopic.learningQuestion,
+    trainingTopic.teacherExplanation,
+    trainingTopic.logicSummary,
+    trainingTopic.learnerTakeaway,
+    JSON.stringify(trainingTopic.scenarios || []),
+    JSON.stringify(trainingTopic.attentionPoints || []),
+    JSON.stringify(trainingTopic.extensions || []),
+    JSON.stringify(trainingTopic.practice || {}),
     ...(Array.isArray(topic.evidence) ? topic.evidence : []),
     ...(Array.isArray(topic.problemTypes) ? topic.problemTypes : []),
   ].filter(Boolean).join(" ");
@@ -6359,6 +6420,10 @@ function renderTopicArticle(topic) {
 }
 
 function buildTopicArticleHtml(topic, row = null) {
+  const rowTypeKind = row?.doc ? materialTypeKind(materialTypeIdForDoc(row.doc), materialTypeNameForDoc(row.doc)) : "";
+  if (rowTypeKind === "training" || topic?.trainingTopic) {
+    return buildTrainingTopicArticleHtml(topic, row);
+  }
   const fallbackCategory = topic.category || categoryDefs.find((item) => item.name === topic.categoryName) || categoryDefs[0];
   const fallbackEvidence = Array.isArray(topic.evidence) ? topic.evidence : [];
   const problemTypes = normalizeProblemTypes(topic.problemTypes, topic.categoryName, fallbackCategory.name);
@@ -6409,6 +6474,102 @@ function buildTopicArticleHtml(topic, row = null) {
     ${articleCaseSection(caseComparison)}
     ${articleMoreSolutionsSection(moreSolutions)}
     ${articleInsightSection(transferableInsights)}
+  `;
+}
+
+function buildTrainingTopicArticleHtml(topic, row = null) {
+  const trainingTopic = normalizeTrainingTopic(topic.trainingTopic || topic) || {};
+  const fallbackEvidence = Array.isArray(topic.evidence) ? topic.evidence : [];
+  const problemTypes = normalizeProblemTypes(topic.problemTypes, topic.categoryName, trainingTopic.knowledgeType || "培训");
+  const sourceMeta = row
+    ? `
+      <div class="topic-meta source-meta">
+        <span class="pill">话题编号：${escapeHtml(row.displayIndex)}</span>
+        <span class="pill">话题来源：${escapeHtml(row.source)} · ${escapeHtml(row.docTitle)}</span>
+        <span class="pill">最后更新：${escapeHtml(formatDate(row.updatedAt))}</span>
+      </div>
+    `
+    : "";
+  const listHtml = (items) => Array.isArray(items) && items.length
+    ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+    : `<p class="muted-text">未提及</p>`;
+  return `
+    <article class="training-topic-article">
+      <div class="topic-article-title-row">
+        <h2>${escapeHtml(topic.title || trainingTopic.learningQuestion || trainingTopic.knowledgeName || "培训话题")}</h2>
+        ${row ? `<button class="favorite-toggle topic-favorite-toggle${topic.favorite ? " is-active" : ""}" type="button" data-topic-favorite-doc="${escapeHtml(row.docId)}" data-topic-favorite-index="${escapeHtml(String(row.topicIndex))}" data-topic-favorite-version="${escapeHtml(row.doc?.analysis?.skillVersion || row.doc?.currentSkillVersion || "")}" aria-label="${topic.favorite ? "取消收藏话题" : "收藏话题"}" title="${topic.favorite ? "取消收藏话题" : "收藏话题"}"><span aria-hidden="true">${favoriteIcon(topic.favorite)}</span></button>` : ""}
+      </div>
+      ${sourceMeta}
+      <div class="topic-meta">
+        <span class="pill">难度：${"★".repeat(topic.difficulty || 1)}${"☆".repeat(5 - (topic.difficulty || 1))}</span>
+        <span class="pill">话题类型：${escapeHtml(problemTypes.join(" / "))}</span>
+        <span class="pill">页面模板：培训学习</span>
+      </div>
+      ${articleSourceSection(topic.sourceSummary || buildTopicSourceSummary(fallbackEvidence, topic.category || categoryDefs[0]), fallbackEvidence)}
+      <section class="article-section training-topic-section training-topic-overview">
+        <h3>知识点/概念</h3>
+        <div class="training-topic-kv">
+          <p><strong>知识点名称：</strong>${escapeHtml(trainingTopic.knowledgeName || topic.title || "未提及")}</p>
+          <p><strong>知识点类型：</strong>${escapeHtml(trainingTopic.knowledgeType || "知识点")}</p>
+          <p><strong>学习问题：</strong>${escapeHtml(trainingTopic.learningQuestion || topic.title || "未提及")}</p>
+          <p><strong>老师怎么讲：</strong>${escapeHtml(trainingTopic.teacherExplanation || "未提及")}</p>
+        </div>
+      </section>
+      <section class="article-section training-topic-section training-topic-scenarios">
+        <h3>讲解场景</h3>
+        ${(trainingTopic.scenarios || []).length ? trainingTopic.scenarios.map((scenario) => `
+          <div class="training-topic-card">
+            <h4>${escapeHtml(scenario.name || "讲解场景")}</h4>
+            <p><strong>场景语境：</strong>${escapeHtml(scenario.context || "未提及")}</p>
+            <p><strong>老师怎么讲：</strong>${escapeHtml(scenario.teacherExplanation || "未提及")}</p>
+            <p><strong>适用条件：</strong>${escapeHtml(scenario.applicability || "未提及")}</p>
+            <p><strong>原文依据：</strong>${escapeHtml(scenario.evidence || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </section>
+      <section class="article-section training-topic-section training-topic-attention">
+        <h3>注意问题</h3>
+        ${(trainingTopic.attentionPoints || []).length ? trainingTopic.attentionPoints.map((point) => `
+          <div class="training-topic-card">
+            <h4>${escapeHtml(point.issue || "注意问题")}</h4>
+            <p><strong>为什么要注意：</strong>${escapeHtml(point.whyItMatters || "未提及")}</p>
+            <p><strong>纠偏方式：</strong>${escapeHtml(point.correction || "未提及")}</p>
+            <p><strong>原文依据：</strong>${escapeHtml(point.evidence || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </section>
+      <section class="article-section training-topic-section training-topic-extension">
+        <h3>知识体系延伸</h3>
+        ${(trainingTopic.extensions || []).length ? trainingTopic.extensions.map((extension) => `
+          <div class="training-topic-card">
+            <h4>${escapeHtml(extension.title || "知识延伸")}</h4>
+            <p><strong>行业案例：</strong>${escapeHtml(extension.industryCase || "未提及")}</p>
+            <p><strong>关联知识：</strong>${escapeHtml(extension.relatedKnowledge || "未提及")}</p>
+            <p><strong>迁移场景：</strong>${escapeHtml(extension.transferScenario || "未提及")}</p>
+            <p><strong>学习建议：</strong>${escapeHtml(extension.learningSuggestion || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </section>
+      <section class="article-section training-topic-section training-topic-practice">
+        <h3>练习任务</h3>
+        <p><strong>任务：</strong>${escapeHtml(trainingTopic.practice?.task || "未提及")}</p>
+        <div class="training-logic-grid">
+          <div>
+            <h4>操作步骤</h4>
+            ${listHtml(trainingTopic.practice?.steps)}
+          </div>
+          <div>
+            <h4>检验标准</h4>
+            ${listHtml(trainingTopic.practice?.checkpoints)}
+          </div>
+        </div>
+      </section>
+      <section class="article-section training-topic-section training-topic-logic">
+        <h3>整体逻辑与学习收获</h3>
+        <p><strong>整体逻辑：</strong>${escapeHtml(trainingTopic.logicSummary || "未提及")}</p>
+        <p><strong>学习者收获：</strong>${escapeHtml(trainingTopic.learnerTakeaway || "未提及")}</p>
+      </section>
+    </article>
   `;
 }
 
@@ -8248,12 +8409,20 @@ function extractTextFromDocumentXml(xml) {
 }
 
 function startAnalysisTicker(item, index, total, skillDisplay = "话题拆解 SKILL") {
-  const messages = [
-    "正在等待大模型返回结构化 JSON。",
-    "正在拆解话题、证据和问题实质。",
-    "正在生成 CEO 解法、理论锚点和案例对照。",
-    "长文分析可能需要更久，请保持页面打开。",
-  ];
+  const isTrainingSkill = /培训/.test(skillDisplay);
+  const messages = isTrainingSkill
+    ? [
+        "正在等待大模型返回结构化 JSON。",
+        "正在按知识点和概念拆解培训内容。",
+        "正在梳理讲解场景、注意问题和知识扩展。",
+        "长文分析可能需要更久，请保持页面打开。",
+      ]
+    : [
+        "正在等待大模型返回结构化 JSON。",
+        "正在拆解话题、证据和问题实质。",
+        "正在生成解法、理论锚点和案例对照。",
+        "长文分析可能需要更久，请保持页面打开。",
+      ];
   let tick = 0;
   return window.setInterval(() => {
     const percent = Math.min(78, 55 + Math.round(((index + 0.35) / Math.max(1, total)) * 22) + tick);
@@ -8472,8 +8641,35 @@ function buildMarkdown() {
   lines.push("", "## 四、金句清单");
   quotes.forEach((quote) => lines.push(`- ${quote}`));
 
-  lines.push("", "## 五、问题化拆解");
+  const hasTrainingTopics = topics.some((topic) => topic.trainingTopic);
+  lines.push("", hasTrainingTopics ? "## 五、培训话题拆解" : "## 五、问题化拆解");
   topics.forEach((topic) => {
+    if (topic.trainingTopic) {
+      const trainingTopic = normalizeTrainingTopic(topic.trainingTopic);
+      lines.push(
+        "",
+        `### 话题${topic.index}：${topic.title}`,
+        `- 难度等级：${"★".repeat(topic.difficulty)}${"☆".repeat(5 - topic.difficulty)}`,
+        `- 话题类型：${normalizeProblemTypes(topic.problemTypes, topic.categoryName, topic.category?.name).join(" / ")}`,
+        `- 知识点名称：${trainingTopic.knowledgeName || ""}`,
+        `- 知识点类型：${trainingTopic.knowledgeType || ""}`,
+        `- 学习问题：${trainingTopic.learningQuestion || ""}`,
+        `- 老师怎么讲：${trainingTopic.teacherExplanation || ""}`,
+        "- 讲解场景：",
+        ...(trainingTopic.scenarios || []).map((item) => `  - ${item.name}：${item.context}｜${item.teacherExplanation}｜适用条件：${item.applicability}`),
+        "- 注意问题：",
+        ...(trainingTopic.attentionPoints || []).map((item) => `  - ${item.issue}：${item.whyItMatters}｜纠偏：${item.correction}`),
+        "- 知识体系延伸：",
+        ...(trainingTopic.extensions || []).map((item) => `  - ${item.title}：${item.industryCase}｜关联知识：${item.relatedKnowledge}｜迁移场景：${item.transferScenario}`),
+        "- 练习任务：",
+        `  - 任务：${trainingTopic.practice?.task || ""}`,
+        ...(trainingTopic.practice?.steps || []).map((item) => `  - 步骤：${item}`),
+        ...(trainingTopic.practice?.checkpoints || []).map((item) => `  - 检验：${item}`),
+        `- 整体逻辑：${trainingTopic.logicSummary || ""}`,
+        `- 学习者收获：${trainingTopic.learnerTakeaway || ""}`,
+      );
+      return;
+    }
     lines.push(
       "",
       `### 问题${topic.index}：${topic.title}`,

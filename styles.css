@@ -2737,6 +2737,72 @@ textarea {
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
 }
 
+.training-topic-article {
+  display: grid;
+  gap: 10px;
+}
+
+.training-topic-section {
+  border-left-color: #2aa8a8;
+}
+
+.training-topic-overview {
+  background: #f5f8ff;
+  border-left-color: #5b8def;
+}
+
+.training-topic-scenarios {
+  background: #f4fbf7;
+  border-left-color: #3bb273;
+}
+
+.training-topic-attention {
+  background: #fff6f8;
+  border-left-color: #d95f8a;
+}
+
+.training-topic-extension {
+  background: #fffaf0;
+  border-left-color: #e9a23b;
+}
+
+.training-topic-practice {
+  background: #f3fbfb;
+  border-left-color: #2aa8a8;
+}
+
+.training-topic-logic {
+  background: #f7f5ff;
+  border-left-color: #8b75e6;
+}
+
+.training-topic-kv {
+  display: grid;
+  gap: 6px;
+}
+
+.training-topic-kv p,
+.training-topic-card p,
+.training-topic-section p {
+  font-size: var(--body-font-size);
+}
+
+.training-topic-card {
+  padding: 12px;
+  border: 1px solid #dce8e6;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.training-topic-card + .training-topic-card {
+  margin-top: 10px;
+}
+
+.training-topic-card h4 {
+  margin: 0 0 8px;
+  font-size: var(--body-font-size);
+}
+
 @media (max-width: 900px) {
   .training-knowledge-grid,
   .training-logic-grid {
