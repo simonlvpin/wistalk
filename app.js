@@ -90,6 +90,7 @@ const SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.23", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话分析 SKILL", changes: ["新增培训讲话资料类型，适配技术培训、业务培训、产品培训和方法论培训。", "新增培训讲话分析 SKILL.md，输出培训基础信息、学习目标、知识地图、关键概念、方法步骤、练习任务、误区纠偏、应用场景和后续计划。", "培训材料支持按需提炼话题，不再强行套高层视角文章结构。", "无话题但已完成分析的会议或培训材料，也可进入材料管理并参与 SKILL 刷新。"] },
   { version: "v1.8.22", date: "2026-05-28", updatedAt: "2026-05-28T13:08:00+08:00", title: "资料分类键值同步", changes: ["资料来源和资料类型统一按 id/name 键值引用。", "历史材料可按名称反查并补齐资料来源和类型 id。", "材料列表、材料管理、话题筛选和 SKILL 刷新候选统一使用键值解析。"] },
   { version: "v1.8.21", date: "2026-05-28", updatedAt: "2026-05-28T12:48:00+08:00", title: "材料与话题收藏", changes: ["SKILL 批量刷新提示增加待刷新材料的话题数量。", "材料列表支持收藏材料和只看已收藏材料。", "话题列表支持收藏话题和只看已收藏话题。", "SKILL 刷新时尽量保留已收藏话题标记。"] },
   { version: "v1.8.20", date: "2026-05-28", updatedAt: "2026-05-28T12:28:00+08:00", title: "SKILL 批量刷新执行器", changes: ["话题 SKILL 页新增按最新版本批量刷新材料入口。", "批量刷新弹窗可勾选未使用最新 SKILL 的材料并集中执行。", "批量执行支持每份材料进度、执行日志和后台继续运行。"] },
@@ -163,6 +164,7 @@ const DEFAULT_MATERIAL_SOURCES = [
 const DEFAULT_MATERIAL_TYPES = [
   { id: "type-executive-view", name: "高层视角", isPreset: true },
   { id: "type-meeting-notes", name: "会议纪要", isPreset: true },
+  { id: "type-training-speech", name: "培训讲话", isPreset: true },
 ];
 const DEFAULT_TOPIC_SKILL_PROMPT = `# 高层视角话题拆解 SKILL.md
 
@@ -328,6 +330,76 @@ const DEFAULT_MEETING_SKILL_PROMPT = `# 会议纪要分析 SKILL.md
 - 保留模糊，原文模糊就原样引用。
 - 先事实后分析，先原文后判断。
 - 语言必须中文，表达要像一份认真整理过的会议学习材料，不要像机器摘要。`;
+
+const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
+
+## 1. 适用范围
+- 适用材料：技术培训、业务培训、产品培训、方法论培训、内部分享、培训逐字稿、课程讲稿、培训复盘材料。
+- 典型场景：技术方案讲解、产品能力培训、销售/交付方法培训、业务流程培训、管理工具培训、新人培训。
+- 不适用：多人会议纪要、高层战略讲话、纯制度文件、没有教学目的的普通文章。
+
+## 2. 核心目标
+把一份培训讲话拆成一份可学习、可复盘、可迁移的培训分析报告。主输出是 trainingAnalysis，不要强行套高层视角的管理话题文章。
+
+必须提取的内容：
+- 培训基础信息
+- 学习目标和适用对象
+- 课程结构与知识地图
+- 关键概念、方法、步骤和案例
+- 可练习任务与检验标准
+- 常见误区、易错点和纠偏方式
+- 应用场景、迁移边界和后续学习计划
+
+如果培训中出现清晰的问题、方法论矛盾、能力短板或可沉淀的学习命题，可以额外输出 topics；如果没有，不要强行提炼，topics 返回空数组。
+
+## 3. 输入理解规则
+- 先识别培训类型：技术培训 / 业务培训 / 产品培训 / 方法论培训 / 混合培训。
+- 识别讲师、学员对象、业务场景、课程目标、模块边界、案例和练习要求。
+- 区分知识点、操作步骤、案例说明、注意事项、误区纠偏、行动要求。
+- 缺失信息统一写“未提及”，不要编造讲师、时长、对象、工具、数字和案例。
+- 对原文没有明确说出的应用建议，必须标注 [推断]。
+
+## 4. 输出结构
+### 4.1 trainingAnalysis（必须输出）
+1. trainingInfo
+   - 培训主题
+   - 培训类型
+   - 目标学员
+   - 讲师/来源
+   - 培训时长
+   - 前置基础
+2. learningObjectives
+   - 学完应该知道什么
+   - 学完应该会做什么
+   - 学完应该能判断什么
+3. knowledgeMap
+   - 按课程模块拆分，每个模块包含模块名称、核心知识点、原文依据
+4. keyConcepts
+   - 概念名称、解释、原文例子或业务例子
+5. methodsAndSteps
+   - 方法名称、适用场景、操作步骤、注意事项
+6. practiceTasks
+   - 练习任务、训练目标、操作步骤、检验标准
+7. commonMisunderstandings
+   - 常见误区、纠偏解释、原文依据
+8. applicationScenarios
+   - 应用场景、怎么用、风险/边界
+9. followUpPlan
+   - 后续行动、学习资料、复盘方式
+10. topicExtractionNote
+   - 说明是否有可提炼话题；如果没有，说明原因
+
+### 4.2 topics（可选）
+- 只有当培训中出现明确问题、能力短板、方法论选择、业务判断、组织协同或可迁移的学习命题时才输出。
+- 不要把普通知识点、工具菜单、操作提醒强行包装成管理话题。
+- 若输出 topics，每个话题仍按高层视角的话题文章结构，但标题和证据必须来自培训原文。
+
+## 5. 输出原则
+- 事实优先，所有内容基于原文。
+- 不编造，没有的信息写“未提及”。
+- 技术培训要保留术语、步骤、输入输出、边界条件。
+- 业务培训要保留业务对象、场景、流程、指标、角色动作。
+- 表达要像一份认真整理过的学习笔记和训练手册，不要像机器摘要。`;
 const DEFAULT_TOPIC_SKILL = {
   id: "topic-skill-default-v1",
   name: skillNameForMaterialTypeName("高层视角"),
@@ -1448,15 +1520,16 @@ function loadTopicSkills() {
     return {
       targetMaterialTypeId: item.targetMaterialTypeId || "type-executive-view",
       ...item,
-      name: skillNameForMaterialTypeName(typeName),
+      name: skillNameForMaterialType(typeName, item.targetMaterialTypeId || "type-executive-view"),
       targetMaterialTypeName: typeName,
-      skillFileName: item.skillFileName || skillFileNameForMaterialTypeName(typeName),
+      skillFileName: item.skillFileName || skillFileNameForMaterialType(typeName, item.targetMaterialTypeId || "type-executive-view"),
       changeLog: Array.isArray(item.changeLog) ? item.changeLog : [],
     };
   });
   const defaultSkills = [
     topicSkillTemplateForMaterialType("type-executive-view"),
     topicSkillTemplateForMaterialType("type-meeting-notes"),
+    topicSkillTemplateForMaterialType("type-training-speech"),
   ];
   state.topicSkills = [...defaultSkills, ...normalizedCustom.filter((item) => item.version !== DEFAULT_TOPIC_SKILL.version || (item.targetMaterialTypeId || "type-executive-view") !== "type-executive-view")]
     .sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
@@ -1491,35 +1564,63 @@ function skillMetaForAnalysis(version, analysis) {
   }
   return {
     id: analysis?.skillId || `topic-skill-${version}`,
-    name: skillNameForMaterialTypeName(targetTypeName),
+    name: skillNameForMaterialType(targetTypeName, targetTypeId),
     version,
     versionNumber: skillVersionNumber(version),
     summary: analysis?.skillSummary || "历史 SKILL 版本",
     prompt: "",
     targetMaterialTypeId: analysis?.targetMaterialTypeId || "type-executive-view",
     targetMaterialTypeName: targetTypeName,
-    skillFileName: analysis?.skillFileName || skillFileNameForMaterialTypeName(targetTypeName),
+    skillFileName: analysis?.skillFileName || skillFileNameForMaterialType(targetTypeName, targetTypeId),
     createdAt: analysis?.skillAppliedAt || "",
     isPreset: false,
   };
 }
 
-function skillNameForMaterialTypeName(typeName = "高层视角") {
+function materialTypeKind(materialTypeId = "", typeName = "") {
+  const id = String(materialTypeId || "").trim();
+  const name = String(typeName || "").trim();
+  if (id === "type-meeting-notes" || name === "会议纪要") {
+    return "meeting";
+  }
+  if (id === "type-training-speech" || name === "培训讲话") {
+    return "training";
+  }
+  return "topic";
+}
+
+function skillNameForMaterialType(typeName = "高层视角", materialTypeId = "") {
   const name = String(typeName || "资料类型").trim();
-  return name === "会议纪要" ? "会议纪要分析 SKILL" : `${name}话题拆解 SKILL`;
+  const kind = materialTypeKind(materialTypeId, name);
+  if (kind === "meeting" || kind === "training") {
+    return `${name}分析 SKILL`;
+  }
+  return `${name}话题拆解 SKILL`;
+}
+
+function skillNameForMaterialTypeName(typeName = "高层视角") {
+  return skillNameForMaterialType(typeName);
+}
+
+function skillFileNameForMaterialType(typeName = "高层视角", materialTypeId = "") {
+  return `${skillNameForMaterialType(typeName, materialTypeId)}.md`;
 }
 
 function skillFileNameForMaterialTypeName(typeName = "高层视角") {
-  return `${skillNameForMaterialTypeName(typeName)}.md`;
+  return skillFileNameForMaterialType(typeName);
 }
 
-function defaultTopicSkillPromptForMaterialType(typeName = "高层视角") {
+function defaultTopicSkillPromptForMaterialType(typeName = "高层视角", materialTypeId = "") {
   const safeTypeName = String(typeName || "资料类型").trim();
-  if (safeTypeName === "会议纪要") {
+  const kind = materialTypeKind(materialTypeId, safeTypeName);
+  if (kind === "meeting") {
     return DEFAULT_MEETING_SKILL_PROMPT;
   }
+  if (kind === "training") {
+    return DEFAULT_TRAINING_SKILL_PROMPT;
+  }
   return DEFAULT_TOPIC_SKILL_PROMPT
-    .replace(/高层视角话题拆解 SKILL\.md/g, skillFileNameForMaterialTypeName(safeTypeName))
+    .replace(/高层视角话题拆解 SKILL\.md/g, skillFileNameForMaterialType(safeTypeName, materialTypeId))
     .replace(/适用材料类型：高层视角/g, `适用材料类型：${safeTypeName}`)
     .replace(/高层视角/g, safeTypeName);
 }
@@ -1528,25 +1629,30 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
   const type = materialTypeById(materialTypeId) || DEFAULT_MATERIAL_TYPES[0];
   const isExecutive = materialTypeId === "type-executive-view";
   const typeName = type.name || "高层视角";
+  const kind = materialTypeKind(materialTypeId, typeName);
   return {
     ...DEFAULT_TOPIC_SKILL,
     id: isExecutive ? DEFAULT_TOPIC_SKILL.id : `topic-skill-default-${materialTypeId}`,
-    name: skillNameForMaterialTypeName(typeName),
+    name: skillNameForMaterialType(typeName, materialTypeId),
     summary: isExecutive
       ? DEFAULT_TOPIC_SKILL.summary
-      : typeName === "会议纪要"
-        ? `面向会议纪要材料的标准${skillFileNameForMaterialTypeName(typeName)}，输出会议纪要分析并按需提炼可学习话题。`
-        : `面向${typeName}材料的初始${skillFileNameForMaterialTypeName(typeName)}，可在此基础上发布专属版本。`,
+      : kind === "meeting"
+        ? `面向${typeName}材料的标准${skillFileNameForMaterialType(typeName, materialTypeId)}，输出会议纪要分析并按需提炼可学习话题。`
+        : kind === "training"
+          ? `面向技术培训和业务培训材料的标准${skillFileNameForMaterialType(typeName, materialTypeId)}，输出培训分析并按需提炼可学习话题。`
+        : `面向${typeName}材料的初始${skillFileNameForMaterialType(typeName, materialTypeId)}，可在此基础上发布专属版本。`,
     prompt: isExecutive
       ? DEFAULT_TOPIC_SKILL_PROMPT
-      : defaultTopicSkillPromptForMaterialType(typeName),
+      : defaultTopicSkillPromptForMaterialType(typeName, materialTypeId),
     targetMaterialTypeId: materialTypeId,
     targetMaterialTypeName: typeName,
-    skillFileName: skillFileNameForMaterialTypeName(typeName),
+    skillFileName: skillFileNameForMaterialType(typeName, materialTypeId),
     changeLog: isExecutive
       ? DEFAULT_TOPIC_SKILL.changeLog
-      : typeName === "会议纪要"
+      : kind === "meeting"
         ? ["初始版本：建立会议基础信息、决策、行动项、议题讨论、协作态势、风险依赖和待定问题的分析标准。"]
+        : kind === "training"
+          ? ["初始版本：建立培训基础信息、学习目标、知识地图、关键概念、方法步骤、练习任务、误区纠偏和应用场景的分析标准。"]
         : [`初始版本：建立${typeName}材料的话题拆解 SKILL.md 基础模版。`],
     isPreset: true,
   };
@@ -1807,14 +1913,14 @@ async function createTopicSkillVersion(summary, prompt, changeLog = null) {
   const nextVersionNumber = maxVersion + 1;
   const skill = {
     id: `topic-skill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    name: skillNameForMaterialTypeName(targetType.name || "高层视角"),
+    name: skillNameForMaterialType(targetType.name || "高层视角", targetTypeId),
     version: `v1.${nextVersionNumber - 1}`,
     versionNumber: nextVersionNumber,
     summary: summaryValue,
     prompt: promptValue,
     targetMaterialTypeId: targetTypeId,
     targetMaterialTypeName: targetType.name || "高层视角",
-    skillFileName: skillFileNameForMaterialTypeName(targetType.name || "高层视角"),
+    skillFileName: skillFileNameForMaterialType(targetType.name || "高层视角", targetTypeId),
     changeLog: Array.isArray(changeLog) && changeLog.length ? changeLog : buildSkillDiffLog(previousSkill, { summary: summaryValue, prompt: promptValue }),
     createdAt: new Date().toISOString(),
     isPreset: false,
@@ -2095,9 +2201,9 @@ async function syncTopicSkillMaterialTypeName(typeId, typeName) {
     (skill.targetMaterialTypeId || "type-executive-view") === typeId
       ? {
           ...skill,
-          name: skillNameForMaterialTypeName(typeName),
+          name: skillNameForMaterialType(typeName, typeId),
           targetMaterialTypeName: typeName,
-          skillFileName: skillFileNameForMaterialTypeName(typeName),
+          skillFileName: skillFileNameForMaterialType(typeName, typeId),
         }
       : skill
   ));
@@ -3826,10 +3932,12 @@ function renderDeepening(modes = deepeningModes) {
 function buildDeepSeekPrompt(text, skill = currentTopicSkill()) {
   const categories = categoryDefs.map((item) => item.name).join("、");
   const targetTypeName = skill?.targetMaterialTypeName || "高层视角";
+  const targetTypeId = skill?.targetMaterialTypeId || "type-executive-view";
+  const targetTypeKind = materialTypeKind(targetTypeId, targetTypeName);
   const skillInstruction = skill?.prompt
     ? `\n\n当前话题 SKILL 版本：${skill.version}｜${skill.summary}\n请优先遵循以下 SKILL 组织规则：\n${skill.prompt}`
     : "";
-  if (targetTypeName === "会议纪要") {
+  if (targetTypeKind === "meeting") {
     return [
       {
         role: "system",
@@ -3915,6 +4023,102 @@ function buildDeepSeekPrompt(text, skill = currentTopicSkill()) {
 6. language 必须中文，内容必须贴合原文，不要编造。
 ${skillInstruction}
   19. 这个会议纪要原文如下：
+${text}
+      `.trim(),
+      },
+    ];
+  }
+  if (targetTypeKind === "training") {
+    return [
+      {
+        role: "system",
+        content:
+          "你是一个培训材料分析助手。请严格根据输入原文进行结构化拆解，输出适合前端渲染的JSON，不要输出多余解释。请区分培训分析内容与可提炼话题；如果没有自然的话题，不要强行生成。",
+      },
+      {
+        role: "user",
+        content: `
+请基于下面的培训讲话原文，输出JSON对象，字段结构如下：
+{
+  "overview": {"oneLine": "", "logicLine": "", "wordCount": 0},
+  "trainingAnalysis": {
+    "trainingInfo": {
+      "topic": "",
+      "trainingType": "",
+      "targetAudience": "",
+      "trainer": "",
+      "duration": "",
+      "prerequisites": ""
+    },
+    "learningObjectives": [{"objective": "", "outcome": "", "evidence": ""}],
+    "knowledgeMap": [{"module": "", "keyPoints": [], "evidence": ""}],
+    "keyConcepts": [{"name": "", "explanation": "", "example": ""}],
+    "methodsAndSteps": [{"method": "", "scenario": "", "steps": [], "notes": ""}],
+    "practiceTasks": [{"task": "", "goal": "", "steps": [], "checkpoints": []}],
+    "commonMisunderstandings": [{"misunderstanding": "", "correction": "", "evidence": ""}],
+    "applicationScenarios": [{"scenario": "", "howToApply": "", "risks": ""}],
+    "followUpPlan": [{"action": "", "resource": "", "reviewMethod": ""}],
+    "topicExtractionNote": ""
+  },
+  "categories": [{"name": "", "colorHint": "", "sentences": []}],
+  "topics": [{
+    "index": 1,
+    "title": "",
+    "sourceSummary": "",
+    "categoryName": "",
+    "problemTypes": ["技术", "业务", "方法论"],
+    "difficulty": 1,
+    "evidence": [],
+    "problemEssence": "",
+    "surfacePhenomenon": "",
+    "deepNature": [
+      {"title": "认知维度", "explanation": "", "case": ""},
+      {"title": "方法维度", "explanation": "", "case": ""},
+      {"title": "迁移维度", "explanation": "", "case": ""}
+    ],
+    "ceoSolution": {
+      "coreJudgment": "",
+      "verificationMethods": ["", "", ""],
+      "keyActions": ["", "", ""]
+    },
+    "theoryAnchors": {
+      "linkedTheoryModel": ["", "", ""],
+      "logicDissection": ["", "", ""]
+    },
+    "caseComparison": {
+      "counterexample": "",
+      "positiveExample": "",
+      "historicalAnalogy": ""
+    },
+    "moreSolutions": [
+      {"title": "", "steps": ["", "", ""], "applicability": ""},
+      {"title": "", "steps": ["", "", ""], "applicability": ""},
+      {"title": "", "steps": ["", "", ""], "applicability": ""}
+    ],
+    "transferableInsights": {
+      "team": "",
+      "reader": ""
+    }
+  }],
+  "quotes": [],
+  "suggestedTags": ["", ""],
+  "deepeningModes": [{"title": "", "goal": "", "questions": ["", "", ""]}]
+}
+
+要求：
+1. 只输出JSON。
+2. overview.oneLine 和 overview.logicLine 必须是基于培训原文的具体提炼，必须出现原文中的课程对象、业务/技术场景或关键方法。
+3. trainingAnalysis 必须输出培训讲话专属分析内容，不能用高层讲话或会议纪要结构替代。
+4. trainingInfo.trainingType 必须判断为“技术培训 / 业务培训 / 产品培训 / 方法论培训 / 混合培训”等之一。
+5. learningObjectives 要区分“知道什么、会做什么、能判断什么”。
+6. knowledgeMap 必须按课程模块拆分，不要只做流水账摘要。
+7. methodsAndSteps 必须保留操作步骤、适用场景和注意事项；技术培训要保留术语和边界，业务培训要保留角色动作和流程。
+8. practiceTasks 要能让学员照着练；如果原文没有练习，基于原文标注 [推断] 给出最小练习。
+9. topics 只有在原文存在清晰可提炼的问题或方法论命题时才输出；没有就返回空数组。
+10. topics 中每个话题至少提供 2 条原文证据。
+11. language 必须中文，内容必须贴合原文，不要编造。
+${skillInstruction}
+  19. 这个培训讲话原文如下：
 ${text}
       `.trim(),
       },
@@ -4102,6 +4306,7 @@ function normalizeDeepSeekAnalysis(raw, sourceText) {
     wordCount: raw?.overview?.wordCount || fallback.overview.wordCount,
   };
   const meetingAnalysis = normalizeMeetingAnalysis(raw?.meetingAnalysis);
+  const trainingAnalysis = normalizeTrainingAnalysis(raw?.trainingAnalysis);
 
   const quotes = Array.isArray(raw?.quotes) && raw.quotes.length ? raw.quotes.slice(0, 10) : fallback.quotes;
   const suggestedTags = Array.isArray(raw?.suggestedTags) && raw.suggestedTags.length ? raw.suggestedTags.slice(0, 8) : fallback.suggestedTags;
@@ -4131,6 +4336,7 @@ function normalizeDeepSeekAnalysis(raw, sourceText) {
     overview,
     topics,
     meetingAnalysis,
+    trainingAnalysis,
     quotes,
     activeCategories,
     suggestedTags,
@@ -4152,7 +4358,8 @@ function validateDeepSeekAnalysis(raw) {
     throw new Error("DeepSeek 返回内容过于模板化，未形成基于原文的具体提炼。");
   }
   const hasMeetingAnalysis = Boolean(raw?.meetingAnalysis && typeof raw.meetingAnalysis === "object");
-  if (!hasMeetingAnalysis && (!Array.isArray(raw?.topics) || raw.topics.length < 1)) {
+  const hasTrainingAnalysis = Boolean(raw?.trainingAnalysis && typeof raw.trainingAnalysis === "object");
+  if (!hasMeetingAnalysis && !hasTrainingAnalysis && (!Array.isArray(raw?.topics) || raw.topics.length < 1)) {
     throw new Error("DeepSeek 没有返回可学习的话题。");
   }
   const weakTopic = (raw.topics || []).find((topic) => !Array.isArray(topic?.evidence) || topic.evidence.length < 2);
@@ -4183,6 +4390,32 @@ function normalizeMeetingAnalysis(input = null) {
     collaboration: input.collaboration && typeof input.collaboration === "object" ? input.collaboration : {},
     risksAndDependencies: input.risksAndDependencies && typeof input.risksAndDependencies === "object" ? input.risksAndDependencies : {},
     pendingQuestions: Array.isArray(input.pendingQuestions) ? input.pendingQuestions : [],
+    topicExtractionNote: input.topicExtractionNote || "",
+  };
+}
+
+function normalizeTrainingAnalysis(input = null) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const info = input.trainingInfo || {};
+  return {
+    trainingInfo: {
+      topic: info.topic || info.title || "未提及",
+      trainingType: info.trainingType || "未提及",
+      targetAudience: info.targetAudience || "未提及",
+      trainer: info.trainer || info.source || "未提及",
+      duration: info.duration || "未知",
+      prerequisites: info.prerequisites || "未提及",
+    },
+    learningObjectives: Array.isArray(input.learningObjectives) ? input.learningObjectives : [],
+    knowledgeMap: Array.isArray(input.knowledgeMap) ? input.knowledgeMap : [],
+    keyConcepts: Array.isArray(input.keyConcepts) ? input.keyConcepts : [],
+    methodsAndSteps: Array.isArray(input.methodsAndSteps) ? input.methodsAndSteps : [],
+    practiceTasks: Array.isArray(input.practiceTasks) ? input.practiceTasks : [],
+    commonMisunderstandings: Array.isArray(input.commonMisunderstandings) ? input.commonMisunderstandings : [],
+    applicationScenarios: Array.isArray(input.applicationScenarios) ? input.applicationScenarios : [],
+    followUpPlan: Array.isArray(input.followUpPlan) ? input.followUpPlan : [],
     topicExtractionNote: input.topicExtractionNote || "",
   };
 }
@@ -4295,9 +4528,14 @@ function renderAnalysis() {
     return;
   }
   const currentDoc = state.documents.find((doc) => doc.id === state.currentDocId) || state.allDocuments.find((doc) => doc.id === state.currentDocId) || null;
+  const currentMaterialTypeKind = materialTypeKind(materialTypeIdForDoc(currentDoc), materialTypeNameForDoc(currentDoc));
   const isMeetingNotes = Boolean(
-    materialTypeNameForDoc(currentDoc) === "会议纪要"
+    currentMaterialTypeKind === "meeting"
     || analysis.meetingAnalysis,
+  );
+  const isTrainingSpeech = Boolean(
+    currentMaterialTypeKind === "training"
+    || analysis.trainingAnalysis,
   );
 
   els.docTitle.textContent = normalizeDocTitle(els.docNameInput.value || state.fileName || "粘贴文本分析");
@@ -4315,14 +4553,34 @@ function renderAnalysis() {
   renderCategories(analysis);
   renderTopics(analysis);
   renderOriginalText(analysis.text);
-  renderMeetingAnalysis(analysis.meetingAnalysis, isMeetingNotes);
+  renderMaterialTypeAnalysis(analysis, isMeetingNotes, isTrainingSpeech);
   if (!els.tagInput.value.trim() && analysis.suggestedTags?.length) {
     els.tagInput.value = analysis.suggestedTags.join(", ");
   }
   els.parseHint.textContent = isMeetingNotes
     ? `已完成会议纪要分析：${analysis.sentences.length} 个有效句子，${analysis.topics.length} 个可提炼话题。`
+    : isTrainingSpeech
+      ? `已完成培训讲话分析：${analysis.sentences.length} 个有效句子，${analysis.topics.length} 个可提炼话题。`
     : `已完成拆解：${analysis.sentences.length} 个有效句子，${analysis.topics.length} 个学习话题。`;
   renderTopicHome();
+}
+
+function renderMaterialTypeAnalysis(analysis, isMeetingNotes = false, isTrainingSpeech = false) {
+  if (!els.meetingAnalysisPanel) {
+    return;
+  }
+  if (isMeetingNotes || analysis?.meetingAnalysis) {
+    els.meetingAnalysisPanel.hidden = false;
+    els.meetingAnalysisPanel.innerHTML = buildMeetingAnalysisHtml(analysis.meetingAnalysis);
+    return;
+  }
+  if (isTrainingSpeech || analysis?.trainingAnalysis) {
+    els.meetingAnalysisPanel.hidden = false;
+    els.meetingAnalysisPanel.innerHTML = buildTrainingAnalysisHtml(analysis.trainingAnalysis);
+    return;
+  }
+  els.meetingAnalysisPanel.hidden = true;
+  els.meetingAnalysisPanel.innerHTML = "";
 }
 
 function renderMeetingAnalysis(meetingAnalysis, isMeetingNotes = false) {
@@ -4510,7 +4768,7 @@ function docAnalysisForSkill(doc, version) {
 function hasNewTopicSkill(doc) {
   const latest = currentTopicSkill(materialTypeIdForDoc(doc) || "type-executive-view");
   const ownsDoc = (doc?.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey;
-  return Boolean(ownsDoc && doc?.analysis?.topics?.length && latest.version !== (doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version));
+  return Boolean(ownsDoc && doc?.analysis && latest.version !== (doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version));
 }
 
 function setSkillRefreshProgress(docId, percent, message) {
@@ -4523,7 +4781,7 @@ function skillRefreshCandidateDocs(materialTypeId, skill = currentTopicSkill(mat
     .filter((doc) => !doc.deletedAt)
     .filter((doc) => (doc.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey)
     .filter((doc) => materialTypeIdForDoc(doc) === (materialTypeId || "type-executive-view"))
-    .filter((doc) => doc.analysis?.topics?.length)
+    .filter((doc) => doc.analysis)
     .filter((doc) => (doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version) !== skill.version)
     .sort((a, b) => new Date(b.lastStudiedAt || b.updatedAt || b.createdAt) - new Date(a.lastStudiedAt || a.updatedAt || a.createdAt));
 }
@@ -4922,7 +5180,8 @@ function materialTopicRow(doc, topic, index) {
 
 function materialSkillDisplay(doc) {
   const typeName = doc?.analysis?.targetMaterialTypeName || materialTypeNameForDoc(doc) || "高层视角";
-  const skillName = skillNameForMaterialTypeName(typeName);
+  const typeId = doc?.analysis?.targetMaterialTypeId || materialTypeIdForDoc(doc) || "type-executive-view";
+  const skillName = skillNameForMaterialType(typeName, typeId);
   const version = doc?.currentSkillVersion || doc?.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
   return `${skillName} ${version}`;
 }
@@ -4985,7 +5244,7 @@ function renderMaterialOverviewPage() {
     return;
   }
   const docs = materialDocsForInsight();
-  const activeDocs = (isAdmin() ? state.allDocuments : state.documents).filter((doc) => !doc.deletedAt && doc.analysis?.topics?.length);
+  const activeDocs = (isAdmin() ? state.allDocuments : state.documents).filter((doc) => !doc.deletedAt && doc.analysis);
   const sourceItems = [...state.materialSources];
   const typeItems = [...state.materialTypes];
   activeDocs.forEach((doc) => {
@@ -5016,10 +5275,14 @@ function renderMaterialOverviewPage() {
   if (state.activeMaterialTopicIndex >= topics.length) {
     state.activeMaterialTopicIndex = 0;
   }
-  const isMeetingNotes = activeDoc ? materialTypeNameForDoc(activeDoc) === "会议纪要" || Boolean(activeAnalysis?.meetingAnalysis) : false;
+  const activeMaterialTypeKind = activeDoc ? materialTypeKind(materialTypeIdForDoc(activeDoc), materialTypeNameForDoc(activeDoc)) : "";
+  const isMeetingNotes = activeDoc ? activeMaterialTypeKind === "meeting" || Boolean(activeAnalysis?.meetingAnalysis) : false;
+  const isTrainingSpeech = activeDoc ? activeMaterialTypeKind === "training" || Boolean(activeAnalysis?.trainingAnalysis) : false;
   const activeMaterialPane = isMeetingNotes
     ? (["meeting", "source", "topics"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
-    : (state.activeMaterialPane === "topics" ? "topics" : "source");
+    : isTrainingSpeech
+      ? (["training", "source", "topics"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
+      : (state.activeMaterialPane === "topics" ? "topics" : "source");
   const activeTopic = activeDoc ? topics[state.activeMaterialTopicIndex] : null;
   const activeDocForTopic = activeDoc && activeAnalysis ? { ...activeDoc, analysis: activeAnalysis } : activeDoc;
   const row = activeDocForTopic && activeTopic ? materialTopicRow(activeDocForTopic, activeTopic, state.activeMaterialTopicIndex) : null;
@@ -5034,7 +5297,7 @@ function renderMaterialOverviewPage() {
         <span class="favorite-filter-icon" aria-hidden="true">${state.materialFavoriteOnly ? "♥" : "♡"}</span>
         <span class="favorite-filter-text">${state.materialFavoriteOnly ? "已收藏" : "收藏"}</span>
       </button>
-      <input class="text-input" id="materialListSearch" type="search" placeholder="搜索材料标题 / 标签 / 来源" value="${escapeHtml(state.materialListSearch)}" />
+      <input class="text-input" id="materialListSearch" type="search" placeholder="搜索材料标题 / 标签 / 来源 / 原文" value="${escapeHtml(state.materialListSearch)}" />
       <select class="text-input" id="materialListSourceFilter">
         <option value="">全部资料来源</option>
         ${sourceItems.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === state.materialListSourceFilter ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
@@ -5113,11 +5376,12 @@ function renderMaterialOverviewPage() {
           <div class="topic-detail-tabs-row material-detail-tabs-row">
             <div class="topic-detail-tabs" role="tablist" aria-label="材料学习内容">
               ${isMeetingNotes ? `<button class="topic-detail-tab${activeMaterialPane === "meeting" ? " is-active" : ""}" type="button" data-material-pane="meeting">会议纪要分析</button>` : ""}
+              ${isTrainingSpeech ? `<button class="topic-detail-tab${activeMaterialPane === "training" ? " is-active" : ""}" type="button" data-material-pane="training">培训分析</button>` : ""}
               <button class="topic-detail-tab${activeMaterialPane === "source" ? " is-active" : ""}" type="button" data-material-pane="source">资料原文</button>
               <button class="topic-detail-tab${activeMaterialPane === "topics" ? " is-active" : ""}" type="button" data-material-pane="topics">话题内容</button>
             </div>
           </div>
-          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : `
+          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : `
             <div class="material-topic-nav">
               ${topics.map((topic, index) => `
                 <button class="${index === state.activeMaterialTopicIndex ? "is-active" : ""}" type="button" data-material-topic="${index}">
@@ -5127,7 +5391,7 @@ function renderMaterialOverviewPage() {
               `).join("")}
             </div>
             <article class="topic-article material-topic-article">
-              ${row ? buildTopicArticleHtml(activeTopic, row) : `<p class="empty-state compact">${isMeetingNotes ? "这份会议纪要没有强行提炼话题，可先查看会议纪要分析。" : "这份材料没有可展示的话题。"}</p>`}
+              ${row ? buildTopicArticleHtml(activeTopic, row) : `<p class="empty-state compact">${isMeetingNotes ? "这份会议纪要没有强行提炼话题，可先查看会议纪要分析。" : isTrainingSpeech ? "这份培训讲话没有强行提炼话题，可先查看培训分析。" : "这份材料没有可展示的话题。"}</p>`}
             </article>
           `}
         ` : `<p class="empty-state">还没有已分析材料。点击顶部“材料上传分析”先上传并执行分析。</p>`}
@@ -5203,7 +5467,12 @@ function renderMaterialOverviewPage() {
       state.activeMaterialTopicIndex = 0;
       state.activeMaterialSkillVersion = "";
       const selectedDoc = docs.find((doc) => doc.id === button.dataset.materialCard);
-      state.activeMaterialPane = selectedDoc && (materialTypeNameForDoc(selectedDoc) === "会议纪要" || selectedDoc.analysis?.meetingAnalysis) ? "meeting" : "source";
+      const selectedTypeKind = selectedDoc ? materialTypeKind(materialTypeIdForDoc(selectedDoc), materialTypeNameForDoc(selectedDoc)) : "";
+      state.activeMaterialPane = selectedDoc && (selectedTypeKind === "meeting" || selectedDoc.analysis?.meetingAnalysis)
+        ? "meeting"
+        : selectedDoc && (selectedTypeKind === "training" || selectedDoc.analysis?.trainingAnalysis)
+          ? "training"
+          : "source";
       state.activeOriginalKeyword = state.materialListSearch.trim();
       renderMaterialOverviewPage();
     });
@@ -5223,7 +5492,14 @@ function renderMaterialOverviewPage() {
   els.materialOverviewPage.querySelector("#materialSkillVersionSelect")?.addEventListener("change", (event) => {
     state.activeMaterialSkillVersion = event.target.value;
     state.activeMaterialTopicIndex = 0;
-    state.activeMaterialPane = "topics";
+    const selectedDoc = docs.find((doc) => doc.id === state.activeMaterialDocId);
+    const selectedAnalysis = selectedDoc ? docAnalysisForSkill(selectedDoc, state.activeMaterialSkillVersion) : null;
+    const selectedTypeKind = selectedDoc ? materialTypeKind(materialTypeIdForDoc(selectedDoc), materialTypeNameForDoc(selectedDoc)) : "";
+    state.activeMaterialPane = selectedDoc && (selectedTypeKind === "meeting" || selectedAnalysis?.meetingAnalysis)
+      ? "meeting"
+      : selectedDoc && (selectedTypeKind === "training" || selectedAnalysis?.trainingAnalysis)
+        ? "training"
+        : "topics";
     renderMaterialOverviewPage();
   });
   els.materialOverviewPage.querySelectorAll("[data-material-pane]").forEach((button) => {
@@ -5554,6 +5830,102 @@ function buildMeetingAnalysisHtml(meetingAnalysis) {
         <article class="article-section meeting-section meeting-section-note">
           <h3>可提炼话题说明</h3>
           <p>${escapeHtml(meetingAnalysis.topicExtractionNote)}</p>
+        </article>
+      ` : ""}
+    </section>
+  `;
+}
+
+function buildTrainingAnalysisHtml(trainingAnalysis) {
+  if (!trainingAnalysis) {
+    return `<p class="empty-state compact">这份材料没有提炼出培训分析内容。</p>`;
+  }
+  const info = trainingAnalysis.trainingInfo || {};
+  const cellText = (value) => {
+    if (Array.isArray(value)) {
+      return value.map(cellText).filter(Boolean).join("；");
+    }
+    if (value && typeof value === "object") {
+      return Object.entries(value)
+        .map(([key, item]) => `${key}：${cellText(item)}`)
+        .filter(Boolean)
+        .join("；");
+    }
+    return String(value || "").trim();
+  };
+  const listText = (items) => (Array.isArray(items) && items.length ? items.map(cellText).filter(Boolean).join("；") : "");
+  const tableRows = (rows, cols) => rows.length
+    ? `<table class="meeting-mini-table"><thead><tr>${cols.map((col) => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cellText(cell) || "未提及")}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+    : `<p class="muted-text">未提及</p>`;
+  return `
+    <section class="meeting-analysis training-analysis">
+      <article class="article-section meeting-section training-section-info">
+        <h3>培训基础信息</h3>
+        <div class="meeting-info-grid">
+          <p><strong>培训主题：</strong>${escapeHtml(info.topic || "未提及")}</p>
+          <p><strong>培训类型：</strong>${escapeHtml(info.trainingType || "未提及")}</p>
+          <p><strong>目标学员：</strong>${escapeHtml(info.targetAudience || "未提及")}</p>
+          <p><strong>讲师/来源：</strong>${escapeHtml(info.trainer || "未提及")}</p>
+          <p><strong>培训时长：</strong>${escapeHtml(info.duration || "未知")}</p>
+          <p><strong>前置基础：</strong>${escapeHtml(info.prerequisites || "未提及")}</p>
+        </div>
+      </article>
+      <article class="article-section meeting-section training-section-objectives">
+        <h3>学习目标</h3>
+        ${tableRows((trainingAnalysis.learningObjectives || []).map((item, index) => [String(index + 1), item.objective, item.outcome, item.evidence]), ["序号", "学习目标", "学习产出", "原文依据"])}
+      </article>
+      <article class="article-section meeting-section training-section-map">
+        <h3>课程结构与知识地图</h3>
+        ${(trainingAnalysis.knowledgeMap || []).length ? trainingAnalysis.knowledgeMap.map((item) => `
+          <div class="meeting-sub-block">
+            <h4>${escapeHtml(item.module || "课程模块")}</h4>
+            <p><strong>核心知识点：</strong>${escapeHtml(listText(item.keyPoints) || "未提及")}</p>
+            <p><strong>原文依据：</strong>${escapeHtml(item.evidence || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </article>
+      <article class="article-section meeting-section training-section-concepts">
+        <h3>关键概念</h3>
+        ${tableRows((trainingAnalysis.keyConcepts || []).map((item, index) => [String(index + 1), item.name, item.explanation, item.example]), ["序号", "概念", "解释", "例子"])}
+      </article>
+      <article class="article-section meeting-section training-section-methods">
+        <h3>方法与步骤</h3>
+        ${(trainingAnalysis.methodsAndSteps || []).length ? trainingAnalysis.methodsAndSteps.map((item) => `
+          <div class="meeting-sub-block">
+            <h4>${escapeHtml(item.method || "方法")}</h4>
+            <p><strong>适用场景：</strong>${escapeHtml(item.scenario || "未提及")}</p>
+            <p><strong>操作步骤：</strong>${escapeHtml(listText(item.steps) || "未提及")}</p>
+            <p><strong>注意事项：</strong>${escapeHtml(item.notes || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </article>
+      <article class="article-section meeting-section training-section-practice">
+        <h3>练习任务</h3>
+        ${(trainingAnalysis.practiceTasks || []).length ? trainingAnalysis.practiceTasks.map((item) => `
+          <div class="meeting-sub-block">
+            <h4>${escapeHtml(item.task || "练习任务")}</h4>
+            <p><strong>训练目标：</strong>${escapeHtml(item.goal || "未提及")}</p>
+            <p><strong>操作步骤：</strong>${escapeHtml(listText(item.steps) || "未提及")}</p>
+            <p><strong>检验标准：</strong>${escapeHtml(listText(item.checkpoints) || "未提及")}</p>
+          </div>
+        `).join("") : `<p class="muted-text">未提及</p>`}
+      </article>
+      <article class="article-section meeting-section training-section-misunderstanding">
+        <h3>常见误区与纠偏</h3>
+        ${tableRows((trainingAnalysis.commonMisunderstandings || []).map((item, index) => [String(index + 1), item.misunderstanding, item.correction, item.evidence]), ["序号", "常见误区", "纠偏解释", "原文依据"])}
+      </article>
+      <article class="article-section meeting-section training-section-application">
+        <h3>应用场景与迁移边界</h3>
+        ${tableRows((trainingAnalysis.applicationScenarios || []).map((item, index) => [String(index + 1), item.scenario, item.howToApply, item.risks]), ["序号", "应用场景", "怎么用", "风险/边界"])}
+      </article>
+      <article class="article-section meeting-section training-section-followup">
+        <h3>后续学习计划</h3>
+        ${tableRows((trainingAnalysis.followUpPlan || []).map((item, index) => [String(index + 1), item.action, item.resource, item.reviewMethod]), ["序号", "后续行动", "学习资料", "复盘方式"])}
+      </article>
+      ${trainingAnalysis.topicExtractionNote ? `
+        <article class="article-section meeting-section training-section-note">
+          <h3>可提炼话题说明</h3>
+          <p>${escapeHtml(trainingAnalysis.topicExtractionNote)}</p>
         </article>
       ` : ""}
     </section>
@@ -6030,7 +6402,7 @@ function renderAnalyzedMaterialList() {
   }
   const docs = [...state.allDocuments]
     .filter((doc) => !doc.deletedAt && (doc.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey)
-    .filter((doc) => doc.analysis?.topics?.length)
+    .filter((doc) => doc.analysis)
     .sort((a, b) => new Date(b.lastStudiedAt || b.updatedAt || b.createdAt) - new Date(a.lastStudiedAt || a.updatedAt || a.createdAt));
   if (!docs.length) {
     els.analyzedMaterialList.innerHTML = `<p class="empty-state compact">还没有已完成分析的材料。这里仅展示当前登录用户自己的内容。</p>`;
@@ -6423,7 +6795,7 @@ function renderTopicSkillPage() {
     .map((type) => `<option value="${escapeHtml(type.id)}" ${type.id === activeTypeId ? "selected" : ""}>${escapeHtml(type.name)}</option>`)
     .join("");
   const versionOptions = versions
-    .map((skill) => `<option value="${escapeHtml(skill.version)}">${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || skillFileNameForMaterialTypeName(activeType.name))}</option>`)
+    .map((skill) => `<option value="${escapeHtml(skill.version)}">${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || skillFileNameForMaterialType(activeType.name, activeTypeId))}</option>`)
     .join("");
   const batchCandidates = skillRefreshCandidateDocs(activeTypeId, latest);
   const batchRunning = state.skillBatchRefresh.active && state.skillBatchRefresh.skillTypeId === activeTypeId && state.skillBatchRefresh.skillVersion === latest.version;
@@ -6448,7 +6820,7 @@ function renderTopicSkillPage() {
       <article class="skill-version-card${skill.version === latest.version ? " is-current" : ""}">
         <div class="skill-version-head">
           <div>
-            <strong>${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || skillFileNameForMaterialTypeName(activeType.name))}</strong>
+            <strong>${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || skillFileNameForMaterialType(activeType.name, activeTypeId))}</strong>
             <small>${escapeHtml(skill.skillFileName || "SKILL.md")} · ${escapeHtml(skill.targetMaterialTypeName || activeType.name)} · ${escapeHtml(skill.isPreset ? "系统预设" : "自定义版本")} · ${escapeHtml(formatDate(skill.createdAt))}</small>
           </div>
           ${skill.version === latest.version ? `<span class="skill-current-badge">当前生效</span>` : ""}
