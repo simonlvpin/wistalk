@@ -90,6 +90,7 @@ const SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.24", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话知识点闭环", changes: ["培训讲话分析从课程报告改为知识点/概念驱动。", "每个知识点下沉到讲解场景、注意问题、行业案例扩展和知识延伸。", "培训分析增加整体逻辑总结与用户富文本笔记，支持保存和更新。", "培训 SKILL 默认版本升级到 v1.1，已分析培训材料会提示可按新 SKILL 刷新。"] },
   { version: "v1.8.23", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话分析 SKILL", changes: ["新增培训讲话资料类型，适配技术培训、业务培训、产品培训和方法论培训。", "新增培训讲话分析 SKILL.md，输出培训基础信息、学习目标、知识地图、关键概念、方法步骤、练习任务、误区纠偏、应用场景和后续计划。", "培训材料支持按需提炼话题，不再强行套高层视角文章结构。", "无话题但已完成分析的会议或培训材料，也可进入材料管理并参与 SKILL 刷新。"] },
   { version: "v1.8.22", date: "2026-05-28", updatedAt: "2026-05-28T13:08:00+08:00", title: "资料分类键值同步", changes: ["资料来源和资料类型统一按 id/name 键值引用。", "历史材料可按名称反查并补齐资料来源和类型 id。", "材料列表、材料管理、话题筛选和 SKILL 刷新候选统一使用键值解析。"] },
   { version: "v1.8.21", date: "2026-05-28", updatedAt: "2026-05-28T12:48:00+08:00", title: "材料与话题收藏", changes: ["SKILL 批量刷新提示增加待刷新材料的话题数量。", "材料列表支持收藏材料和只看已收藏材料。", "话题列表支持收藏话题和只看已收藏话题。", "SKILL 刷新时尽量保留已收藏话题标记。"] },
@@ -339,25 +340,24 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 - 不适用：多人会议纪要、高层战略讲话、纯制度文件、没有教学目的的普通文章。
 
 ## 2. 核心目标
-把一份培训讲话拆成一份可学习、可复盘、可迁移的培训分析报告。主输出是 trainingAnalysis，不要强行套高层视角的管理话题文章。
+把一份培训讲话拆成“知识点/概念驱动”的学习闭环。主输出是 trainingAnalysis，不要强行套高层视角的管理话题文章。
 
-必须提取的内容：
-- 培训基础信息
-- 学习目标和适用对象
-- 课程结构与知识地图
-- 关键概念、方法、步骤和案例
-- 可练习任务与检验标准
-- 常见误区、易错点和纠偏方式
-- 应用场景、迁移边界和后续学习计划
+必须围绕以下逻辑输出：
+1. 先识别培训里讲到的各个知识点、概念、方法或工具。
+2. 每个知识点/概念下面，整理老师讲到的一个或多个具体场景。
+3. 每个知识点/概念下面，整理学习和应用过程中需要注意的问题、误区、边界和风险。
+4. 基于原文知识点和场景，用大模型扩展行业案例、关联知识点和迁移场景，必须标注 [扩展]。
+5. 总结整场培训的知识点整体逻辑，说明这些知识点之间如何层层递进或相互支撑。
+6. 为用户后续笔记预留空间，前端会提供富文本笔记保存能力。
 
 如果培训中出现清晰的问题、方法论矛盾、能力短板或可沉淀的学习命题，可以额外输出 topics；如果没有，不要强行提炼，topics 返回空数组。
 
 ## 3. 输入理解规则
 - 先识别培训类型：技术培训 / 业务培训 / 产品培训 / 方法论培训 / 混合培训。
-- 识别讲师、学员对象、业务场景、课程目标、模块边界、案例和练习要求。
-- 区分知识点、操作步骤、案例说明、注意事项、误区纠偏、行动要求。
+- 识别讲师、学员对象、课程目标、知识点边界、场景案例和练习要求。
+- 区分：知识点/概念、老师原文解释、具体场景、操作过程、注意事项、误区纠偏、行动要求。
 - 缺失信息统一写“未提及”，不要编造讲师、时长、对象、工具、数字和案例。
-- 对原文没有明确说出的应用建议，必须标注 [推断]。
+- 对原文没有明确说出的应用建议、行业案例、知识延伸，必须标注 [扩展] 或 [推断]。
 
 ## 4. 输出结构
 ### 4.1 trainingAnalysis（必须输出）
@@ -368,25 +368,19 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
    - 讲师/来源
    - 培训时长
    - 前置基础
-2. learningObjectives
-   - 学完应该知道什么
-   - 学完应该会做什么
-   - 学完应该能判断什么
-3. knowledgeMap
-   - 按课程模块拆分，每个模块包含模块名称、核心知识点、原文依据
-4. keyConcepts
-   - 概念名称、解释、原文例子或业务例子
-5. methodsAndSteps
-   - 方法名称、适用场景、操作步骤、注意事项
-6. practiceTasks
-   - 练习任务、训练目标、操作步骤、检验标准
-7. commonMisunderstandings
-   - 常见误区、纠偏解释、原文依据
-8. applicationScenarios
-   - 应用场景、怎么用、风险/边界
-9. followUpPlan
-   - 后续行动、学习资料、复盘方式
-10. topicExtractionNote
+2. knowledgeItems
+   - 每个元素代表一个知识点、概念、方法或工具。
+   - 必须包含：名称、类型、原文解释、为什么重要、原文依据。
+   - 必须包含：老师讲到的场景列表，每个场景说明场景名称、业务/技术语境、老师如何讲、适用条件、原文依据。
+   - 必须包含：注意问题列表，说明误区/风险/边界、为什么容易出错、纠偏方式、原文依据。
+   - 必须包含：知识扩展列表，用 [扩展] 标注行业案例、关联知识点、迁移场景、可进一步学习的内容。
+   - 必须包含：练习任务，帮助学员把这个知识点用出来。
+3. overallLogic
+   - 整体逻辑一句话
+   - 课程推进路径
+   - 知识点之间的关系
+   - 学习者应该形成的能力闭环
+4. topicExtractionNote
    - 说明是否有可提炼话题；如果没有，说明原因
 
 ### 4.2 topics（可选）
@@ -399,6 +393,7 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 - 不编造，没有的信息写“未提及”。
 - 技术培训要保留术语、步骤、输入输出、边界条件。
 - 业务培训要保留业务对象、场景、流程、指标、角色动作。
+- 原文没有说但为了学习体系延伸而补充的内容，必须显式标注 [扩展]。
 - 表达要像一份认真整理过的学习笔记和训练手册，不要像机器摘要。`;
 const DEFAULT_TOPIC_SKILL = {
   id: "topic-skill-default-v1",
@@ -1633,6 +1628,8 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
   return {
     ...DEFAULT_TOPIC_SKILL,
     id: isExecutive ? DEFAULT_TOPIC_SKILL.id : `topic-skill-default-${materialTypeId}`,
+    version: kind === "training" ? "v1.1" : DEFAULT_TOPIC_SKILL.version,
+    versionNumber: kind === "training" ? 2 : DEFAULT_TOPIC_SKILL.versionNumber,
     name: skillNameForMaterialType(typeName, materialTypeId),
     summary: isExecutive
       ? DEFAULT_TOPIC_SKILL.summary
@@ -1652,7 +1649,7 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
       : kind === "meeting"
         ? ["初始版本：建立会议基础信息、决策、行动项、议题讨论、协作态势、风险依赖和待定问题的分析标准。"]
         : kind === "training"
-          ? ["初始版本：建立培训基础信息、学习目标、知识地图、关键概念、方法步骤、练习任务、误区纠偏和应用场景的分析标准。"]
+          ? ["v1.1：培训分析改为知识点/概念驱动，围绕讲解场景、注意问题、知识扩展、整体逻辑和用户笔记形成学习闭环。"]
         : [`初始版本：建立${typeName}材料的话题拆解 SKILL.md 基础模版。`],
     isPreset: true,
   };
@@ -4050,14 +4047,44 @@ ${text}
       "duration": "",
       "prerequisites": ""
     },
-    "learningObjectives": [{"objective": "", "outcome": "", "evidence": ""}],
-    "knowledgeMap": [{"module": "", "keyPoints": [], "evidence": ""}],
-    "keyConcepts": [{"name": "", "explanation": "", "example": ""}],
-    "methodsAndSteps": [{"method": "", "scenario": "", "steps": [], "notes": ""}],
-    "practiceTasks": [{"task": "", "goal": "", "steps": [], "checkpoints": []}],
-    "commonMisunderstandings": [{"misunderstanding": "", "correction": "", "evidence": ""}],
-    "applicationScenarios": [{"scenario": "", "howToApply": "", "risks": ""}],
-    "followUpPlan": [{"action": "", "resource": "", "reviewMethod": ""}],
+    "knowledgeItems": [{
+      "name": "",
+      "type": "概念/知识点/方法/工具/流程",
+      "originalExplanation": "",
+      "whyImportant": "",
+      "evidence": [],
+      "scenarios": [{
+        "name": "",
+        "context": "",
+        "teacherExplanation": "",
+        "applicability": "",
+        "evidence": ""
+      }],
+      "attentionPoints": [{
+        "issue": "",
+        "whyItMatters": "",
+        "correction": "",
+        "evidence": ""
+      }],
+      "extensions": [{
+        "title": "",
+        "industryCase": "",
+        "relatedKnowledge": "",
+        "transferScenario": "",
+        "learningSuggestion": ""
+      }],
+      "practice": {
+        "task": "",
+        "steps": [],
+        "checkpoints": []
+      }
+    }],
+    "overallLogic": {
+      "oneLine": "",
+      "learningPath": [],
+      "knowledgeRelations": [],
+      "capabilityLoop": ""
+    },
     "topicExtractionNote": ""
   },
   "categories": [{"name": "", "colorHint": "", "sentences": []}],
@@ -4110,13 +4137,14 @@ ${text}
 2. overview.oneLine 和 overview.logicLine 必须是基于培训原文的具体提炼，必须出现原文中的课程对象、业务/技术场景或关键方法。
 3. trainingAnalysis 必须输出培训讲话专属分析内容，不能用高层讲话或会议纪要结构替代。
 4. trainingInfo.trainingType 必须判断为“技术培训 / 业务培训 / 产品培训 / 方法论培训 / 混合培训”等之一。
-5. learningObjectives 要区分“知道什么、会做什么、能判断什么”。
-6. knowledgeMap 必须按课程模块拆分，不要只做流水账摘要。
-7. methodsAndSteps 必须保留操作步骤、适用场景和注意事项；技术培训要保留术语和边界，业务培训要保留角色动作和流程。
-8. practiceTasks 要能让学员照着练；如果原文没有练习，基于原文标注 [推断] 给出最小练习。
-9. topics 只有在原文存在清晰可提炼的问题或方法论命题时才输出；没有就返回空数组。
-10. topics 中每个话题至少提供 2 条原文证据。
-11. language 必须中文，内容必须贴合原文，不要编造。
+5. knowledgeItems 必须按照原文中出现的知识点、概念、方法、工具或流程来拆解，不要按泛泛课程模块流水账总结。
+6. 每个 knowledgeItem 必须包含老师讲到的一个或多个具体场景；如果原文只讲了一个场景，就输出一个，不要硬凑多个。
+7. 每个 knowledgeItem 必须包含注意问题：误区、风险、边界、易错点或应用前提；原文没直接说但可合理补充的，必须标注 [推断]。
+8. extensions 是大模型基于知识点和场景做的知识体系延伸，必须标注 [扩展]，可以包含行业案例、关联知识点、迁移场景和学习建议。
+9. overallLogic 必须总结整个培训的知识点整体逻辑，说明这些知识点如何构成学习路径和能力闭环。
+10. topics 只有在原文存在清晰可提炼的问题或方法论命题时才输出；没有就返回空数组。
+11. topics 中每个话题至少提供 2 条原文证据。
+12. language 必须中文，内容必须贴合原文；原文依据不能编造，扩展内容必须标注 [扩展]。
 ${skillInstruction}
   19. 这个培训讲话原文如下：
 ${text}
@@ -4399,6 +4427,69 @@ function normalizeTrainingAnalysis(input = null) {
     return null;
   }
   const info = input.trainingInfo || {};
+  const normalizeList = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
+  const normalizeTextList = (value) => normalizeList(value).map((item) => String(item || "").trim()).filter(Boolean);
+  const oldKnowledgeItems = [
+    ...(Array.isArray(input.keyConcepts) ? input.keyConcepts.map((item) => ({
+      name: item.name || "关键概念",
+      type: "概念",
+      originalExplanation: item.explanation || "未提及",
+      whyImportant: "来自旧版培训分析的关键概念。",
+      evidence: [item.example].filter(Boolean),
+      scenarios: item.example ? [{ name: "原文例子", context: item.example, teacherExplanation: item.explanation || "未提及", applicability: "未提及", evidence: item.example }] : [],
+      attentionPoints: [],
+      extensions: [],
+      practice: {},
+    })) : []),
+    ...(Array.isArray(input.methodsAndSteps) ? input.methodsAndSteps.map((item) => ({
+      name: item.method || "方法步骤",
+      type: "方法",
+      originalExplanation: item.scenario || "未提及",
+      whyImportant: "来自旧版培训分析的方法步骤。",
+      evidence: [],
+      scenarios: item.scenario ? [{ name: "适用场景", context: item.scenario, teacherExplanation: item.method || "未提及", applicability: item.scenario, evidence: "" }] : [],
+      attentionPoints: item.notes ? [{ issue: item.notes, whyItMatters: "使用该方法时需要关注。", correction: "结合原文场景谨慎应用。", evidence: item.notes }] : [],
+      extensions: [],
+      practice: { task: item.method || "", steps: item.steps || [], checkpoints: [] },
+    })) : []),
+  ];
+  const knowledgeItems = Array.isArray(input.knowledgeItems) && input.knowledgeItems.length
+    ? input.knowledgeItems.map((item) => ({
+        name: item.name || item.title || "未命名知识点",
+        type: item.type || "知识点",
+        originalExplanation: item.originalExplanation || item.explanation || "未提及",
+        whyImportant: item.whyImportant || "未提及",
+        evidence: normalizeTextList(item.evidence),
+        scenarios: normalizeList(item.scenarios).map((scenario) => ({
+          name: scenario.name || scenario.title || "讲解场景",
+          context: scenario.context || "未提及",
+          teacherExplanation: scenario.teacherExplanation || scenario.explanation || "未提及",
+          applicability: scenario.applicability || "未提及",
+          evidence: scenario.evidence || "",
+        })),
+        attentionPoints: normalizeList(item.attentionPoints).map((point) => ({
+          issue: point.issue || point.risk || point.misunderstanding || "未提及",
+          whyItMatters: point.whyItMatters || point.reason || "未提及",
+          correction: point.correction || point.solution || "未提及",
+          evidence: point.evidence || "",
+        })),
+        extensions: normalizeList(item.extensions).map((extension) => ({
+          title: extension.title || "知识延伸",
+          industryCase: extension.industryCase || extension.case || "未提及",
+          relatedKnowledge: extension.relatedKnowledge || "未提及",
+          transferScenario: extension.transferScenario || "未提及",
+          learningSuggestion: extension.learningSuggestion || "未提及",
+        })),
+        practice: item.practice && typeof item.practice === "object"
+          ? {
+              task: item.practice.task || "未提及",
+              steps: normalizeTextList(item.practice.steps),
+              checkpoints: normalizeTextList(item.practice.checkpoints),
+            }
+          : {},
+      }))
+    : oldKnowledgeItems;
+  const logic = input.overallLogic || {};
   return {
     trainingInfo: {
       topic: info.topic || info.title || "未提及",
@@ -4407,6 +4498,13 @@ function normalizeTrainingAnalysis(input = null) {
       trainer: info.trainer || info.source || "未提及",
       duration: info.duration || "未知",
       prerequisites: info.prerequisites || "未提及",
+    },
+    knowledgeItems,
+    overallLogic: {
+      oneLine: logic.oneLine || input.logicSummary || "",
+      learningPath: normalizeTextList(logic.learningPath),
+      knowledgeRelations: normalizeTextList(logic.knowledgeRelations),
+      capabilityLoop: logic.capabilityLoop || "",
     },
     learningObjectives: Array.isArray(input.learningObjectives) ? input.learningObjectives : [],
     knowledgeMap: Array.isArray(input.knowledgeMap) ? input.knowledgeMap : [],
@@ -5381,7 +5479,7 @@ function renderMaterialOverviewPage() {
               <button class="topic-detail-tab${activeMaterialPane === "topics" ? " is-active" : ""}" type="button" data-material-pane="topics">话题内容</button>
             </div>
           </div>
-          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : `
+          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis, activeDoc, activeSkillVersion) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : `
             <div class="material-topic-nav">
               ${topics.map((topic, index) => `
                 <button class="${index === state.activeMaterialTopicIndex ? "is-active" : ""}" type="button" data-material-topic="${index}">
@@ -5515,6 +5613,33 @@ function renderMaterialOverviewPage() {
     button.addEventListener("click", () => {
       state.activeMaterialTopicIndex = Number(button.dataset.materialTopic || 0);
       state.activeMaterialPane = "topics";
+      renderMaterialOverviewPage();
+    });
+  });
+  els.materialOverviewPage.querySelectorAll("[data-rich-command]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const editor = els.materialOverviewPage.querySelector("[data-training-note-editor]");
+      if (!editor) {
+        return;
+      }
+      editor.focus();
+      document.execCommand(button.dataset.richCommand, false, null);
+    });
+  });
+  els.materialOverviewPage.querySelectorAll("[data-save-training-note]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const editor = [...els.materialOverviewPage.querySelectorAll("[data-training-note-editor]")]
+        .find((node) => node.dataset.trainingNoteEditor === button.dataset.saveTrainingNote);
+      const ok = await confirmAction({
+        title: "保存学习笔记",
+        message: "确认保存当前培训学习笔记吗？保存后会覆盖这个 SKILL 版本下的旧笔记。",
+        confirmText: "确认保存",
+      });
+      if (!ok || !editor) {
+        return;
+      }
+      await updateTrainingNote(button.dataset.saveTrainingNote, button.dataset.skillVersion, editor.innerHTML);
+      setSkillNotice("学习笔记已保存。", "success");
       renderMaterialOverviewPage();
     });
   });
@@ -5836,7 +5961,7 @@ function buildMeetingAnalysisHtml(meetingAnalysis) {
   `;
 }
 
-function buildTrainingAnalysisHtml(trainingAnalysis) {
+function buildTrainingAnalysisHtml(trainingAnalysis, doc = null, skillVersion = "") {
   if (!trainingAnalysis) {
     return `<p class="empty-state compact">这份材料没有提炼出培训分析内容。</p>`;
   }
@@ -5854,9 +5979,11 @@ function buildTrainingAnalysisHtml(trainingAnalysis) {
     return String(value || "").trim();
   };
   const listText = (items) => (Array.isArray(items) && items.length ? items.map(cellText).filter(Boolean).join("；") : "");
-  const tableRows = (rows, cols) => rows.length
-    ? `<table class="meeting-mini-table"><thead><tr>${cols.map((col) => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cellText(cell) || "未提及")}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+  const listHtml = (items) => Array.isArray(items) && items.length
+    ? `<ul>${items.map((item) => `<li>${escapeHtml(cellText(item) || "未提及")}</li>`).join("")}</ul>`
     : `<p class="muted-text">未提及</p>`;
+  const knowledgeItems = Array.isArray(trainingAnalysis.knowledgeItems) ? trainingAnalysis.knowledgeItems : [];
+  const logic = trainingAnalysis.overallLogic || {};
   return `
     <section class="meeting-analysis training-analysis">
       <article class="article-section meeting-section training-section-info">
@@ -5870,57 +5997,82 @@ function buildTrainingAnalysisHtml(trainingAnalysis) {
           <p><strong>前置基础：</strong>${escapeHtml(info.prerequisites || "未提及")}</p>
         </div>
       </article>
-      <article class="article-section meeting-section training-section-objectives">
-        <h3>学习目标</h3>
-        ${tableRows((trainingAnalysis.learningObjectives || []).map((item, index) => [String(index + 1), item.objective, item.outcome, item.evidence]), ["序号", "学习目标", "学习产出", "原文依据"])}
-      </article>
-      <article class="article-section meeting-section training-section-map">
-        <h3>课程结构与知识地图</h3>
-        ${(trainingAnalysis.knowledgeMap || []).length ? trainingAnalysis.knowledgeMap.map((item) => `
-          <div class="meeting-sub-block">
-            <h4>${escapeHtml(item.module || "课程模块")}</h4>
-            <p><strong>核心知识点：</strong>${escapeHtml(listText(item.keyPoints) || "未提及")}</p>
-            <p><strong>原文依据：</strong>${escapeHtml(item.evidence || "未提及")}</p>
-          </div>
-        `).join("") : `<p class="muted-text">未提及</p>`}
-      </article>
       <article class="article-section meeting-section training-section-concepts">
-        <h3>关键概念</h3>
-        ${tableRows((trainingAnalysis.keyConcepts || []).map((item, index) => [String(index + 1), item.name, item.explanation, item.example]), ["序号", "概念", "解释", "例子"])}
-      </article>
-      <article class="article-section meeting-section training-section-methods">
-        <h3>方法与步骤</h3>
-        ${(trainingAnalysis.methodsAndSteps || []).length ? trainingAnalysis.methodsAndSteps.map((item) => `
-          <div class="meeting-sub-block">
-            <h4>${escapeHtml(item.method || "方法")}</h4>
-            <p><strong>适用场景：</strong>${escapeHtml(item.scenario || "未提及")}</p>
-            <p><strong>操作步骤：</strong>${escapeHtml(listText(item.steps) || "未提及")}</p>
-            <p><strong>注意事项：</strong>${escapeHtml(item.notes || "未提及")}</p>
-          </div>
+        <h3>知识点与概念拆解</h3>
+        ${knowledgeItems.length ? knowledgeItems.map((item, index) => `
+          <section class="training-knowledge-card">
+            <div class="training-knowledge-head">
+              <span>${escapeHtml(String(index + 1).padStart(2, "0"))}</span>
+              <div>
+                <strong>${escapeHtml(item.name || "未命名知识点")}</strong>
+                <small>${escapeHtml(item.type || "知识点")}</small>
+              </div>
+            </div>
+            <div class="training-knowledge-summary">
+              <p><strong>老师原文解释：</strong>${escapeHtml(item.originalExplanation || "未提及")}</p>
+              <p><strong>为什么重要：</strong>${escapeHtml(item.whyImportant || "未提及")}</p>
+              <p><strong>原文依据：</strong>${escapeHtml(listText(item.evidence) || "未提及")}</p>
+            </div>
+            <div class="training-knowledge-grid">
+              <div class="training-mini-block training-mini-scenarios">
+                <h4>讲解场景</h4>
+                ${(item.scenarios || []).length ? item.scenarios.map((scenario) => `
+                  <div class="training-mini-item">
+                    <strong>${escapeHtml(scenario.name || "讲解场景")}</strong>
+                    <p><b>场景语境：</b>${escapeHtml(scenario.context || "未提及")}</p>
+                    <p><b>老师怎么讲：</b>${escapeHtml(scenario.teacherExplanation || "未提及")}</p>
+                    <p><b>适用条件：</b>${escapeHtml(scenario.applicability || "未提及")}</p>
+                    <p><b>原文依据：</b>${escapeHtml(scenario.evidence || "未提及")}</p>
+                  </div>
+                `).join("") : `<p class="muted-text">未提及</p>`}
+              </div>
+              <div class="training-mini-block training-mini-attention">
+                <h4>注意问题</h4>
+                ${(item.attentionPoints || []).length ? item.attentionPoints.map((point) => `
+                  <div class="training-mini-item">
+                    <strong>${escapeHtml(point.issue || "注意问题")}</strong>
+                    <p><b>为什么要注意：</b>${escapeHtml(point.whyItMatters || "未提及")}</p>
+                    <p><b>纠偏方式：</b>${escapeHtml(point.correction || "未提及")}</p>
+                    <p><b>原文依据：</b>${escapeHtml(point.evidence || "未提及")}</p>
+                  </div>
+                `).join("") : `<p class="muted-text">未提及</p>`}
+              </div>
+              <div class="training-mini-block training-mini-extension">
+                <h4>知识体系延伸</h4>
+                ${(item.extensions || []).length ? item.extensions.map((extension) => `
+                  <div class="training-mini-item">
+                    <strong>${escapeHtml(extension.title || "知识延伸")}</strong>
+                    <p><b>行业案例：</b>${escapeHtml(extension.industryCase || "未提及")}</p>
+                    <p><b>关联知识：</b>${escapeHtml(extension.relatedKnowledge || "未提及")}</p>
+                    <p><b>迁移场景：</b>${escapeHtml(extension.transferScenario || "未提及")}</p>
+                    <p><b>学习建议：</b>${escapeHtml(extension.learningSuggestion || "未提及")}</p>
+                  </div>
+                `).join("") : `<p class="muted-text">未提及</p>`}
+              </div>
+              <div class="training-mini-block training-mini-practice">
+                <h4>练习任务</h4>
+                <p><strong>任务：</strong>${escapeHtml(item.practice?.task || "未提及")}</p>
+                <p><strong>步骤：</strong>${escapeHtml(listText(item.practice?.steps) || "未提及")}</p>
+                <p><strong>检验点：</strong>${escapeHtml(listText(item.practice?.checkpoints) || "未提及")}</p>
+              </div>
+            </div>
+          </section>
         `).join("") : `<p class="muted-text">未提及</p>`}
       </article>
-      <article class="article-section meeting-section training-section-practice">
-        <h3>练习任务</h3>
-        ${(trainingAnalysis.practiceTasks || []).length ? trainingAnalysis.practiceTasks.map((item) => `
-          <div class="meeting-sub-block">
-            <h4>${escapeHtml(item.task || "练习任务")}</h4>
-            <p><strong>训练目标：</strong>${escapeHtml(item.goal || "未提及")}</p>
-            <p><strong>操作步骤：</strong>${escapeHtml(listText(item.steps) || "未提及")}</p>
-            <p><strong>检验标准：</strong>${escapeHtml(listText(item.checkpoints) || "未提及")}</p>
+      <article class="article-section meeting-section training-section-logic">
+        <h3>整体知识逻辑</h3>
+        <p><strong>一句话：</strong>${escapeHtml(logic.oneLine || "未提及")}</p>
+        <div class="training-logic-grid">
+          <div>
+            <h4>学习路径</h4>
+            ${listHtml(logic.learningPath)}
           </div>
-        `).join("") : `<p class="muted-text">未提及</p>`}
-      </article>
-      <article class="article-section meeting-section training-section-misunderstanding">
-        <h3>常见误区与纠偏</h3>
-        ${tableRows((trainingAnalysis.commonMisunderstandings || []).map((item, index) => [String(index + 1), item.misunderstanding, item.correction, item.evidence]), ["序号", "常见误区", "纠偏解释", "原文依据"])}
-      </article>
-      <article class="article-section meeting-section training-section-application">
-        <h3>应用场景与迁移边界</h3>
-        ${tableRows((trainingAnalysis.applicationScenarios || []).map((item, index) => [String(index + 1), item.scenario, item.howToApply, item.risks]), ["序号", "应用场景", "怎么用", "风险/边界"])}
-      </article>
-      <article class="article-section meeting-section training-section-followup">
-        <h3>后续学习计划</h3>
-        ${tableRows((trainingAnalysis.followUpPlan || []).map((item, index) => [String(index + 1), item.action, item.resource, item.reviewMethod]), ["序号", "后续行动", "学习资料", "复盘方式"])}
+          <div>
+            <h4>知识点关系</h4>
+            ${listHtml(logic.knowledgeRelations)}
+          </div>
+        </div>
+        <p><strong>能力闭环：</strong>${escapeHtml(logic.capabilityLoop || "未提及")}</p>
       </article>
       ${trainingAnalysis.topicExtractionNote ? `
         <article class="article-section meeting-section training-section-note">
@@ -5928,8 +6080,107 @@ function buildTrainingAnalysisHtml(trainingAnalysis) {
           <p>${escapeHtml(trainingAnalysis.topicExtractionNote)}</p>
         </article>
       ` : ""}
+      ${buildTrainingNoteEditor(doc, skillVersion)}
     </section>
   `;
+}
+
+function trainingNoteForDoc(doc, skillVersion = "") {
+  const version = skillVersion || doc?.currentSkillVersion || doc?.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  const notes = doc?.trainingNotes && typeof doc.trainingNotes === "object" ? doc.trainingNotes : {};
+  return notes[version] || notes.default || "";
+}
+
+function canEditTrainingNote(doc) {
+  return Boolean(doc && (doc.ownerEmailKey || "").toLowerCase() === state.currentUser?.emailKey);
+}
+
+function buildTrainingNoteEditor(doc = null, skillVersion = "") {
+  if (!doc) {
+    return "";
+  }
+  const version = skillVersion || doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  const noteHtml = sanitizeRichText(trainingNoteForDoc(doc, version));
+  const editable = canEditTrainingNote(doc);
+  return `
+    <article class="article-section meeting-section training-section-user-note">
+      <div class="training-note-head">
+        <div>
+          <h3>我的学习笔记</h3>
+          <p>这里可以补充自己的理解、案例、行动项和复盘记录。</p>
+        </div>
+        ${editable ? `<button class="mini-button" type="button" data-save-training-note="${escapeHtml(doc.id)}" data-skill-version="${escapeHtml(version)}">保存笔记</button>` : `<span class="pill">仅可查看</span>`}
+      </div>
+      ${editable ? `
+        <div class="rich-toolbar" aria-label="笔记格式工具">
+          <button type="button" data-rich-command="bold">B</button>
+          <button type="button" data-rich-command="italic">I</button>
+          <button type="button" data-rich-command="underline">U</button>
+          <button type="button" data-rich-command="insertUnorderedList">列表</button>
+          <button type="button" data-rich-command="insertOrderedList">编号</button>
+        </div>
+      ` : ""}
+      <div class="training-note-editor" ${editable ? "contenteditable=\"true\"" : ""} data-training-note-editor="${escapeHtml(doc.id)}" data-placeholder="写下你对这次培训的理解、可迁移场景、待验证问题和后续行动...">${noteHtml}</div>
+    </article>
+  `;
+}
+
+function sanitizeRichText(html = "") {
+  const raw = String(html || "").trim();
+  if (!raw || typeof document === "undefined") {
+    return "";
+  }
+  const allowedTags = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "A", "BLOCKQUOTE", "H4"]);
+  const template = document.createElement("template");
+  template.innerHTML = raw;
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent || "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return document.createDocumentFragment();
+    }
+    const tag = node.tagName;
+    if (!allowedTags.has(tag)) {
+      const fragment = document.createDocumentFragment();
+      [...node.childNodes].forEach((child) => fragment.appendChild(cleanNode(child)));
+      return fragment;
+    }
+    const element = document.createElement(tag.toLowerCase());
+    if (tag === "A") {
+      const href = node.getAttribute("href") || "";
+      if (/^https?:\/\//i.test(href)) {
+        element.setAttribute("href", href);
+        element.setAttribute("target", "_blank");
+        element.setAttribute("rel", "noreferrer");
+      }
+    }
+    [...node.childNodes].forEach((child) => element.appendChild(cleanNode(child)));
+    return element;
+  };
+  const cleaned = document.createDocumentFragment();
+  [...template.content.childNodes].forEach((node) => cleaned.appendChild(cleanNode(node)));
+  const output = document.createElement("div");
+  output.appendChild(cleaned);
+  return output.innerHTML;
+}
+
+async function updateTrainingNote(docId, skillVersion, html) {
+  const doc = state.allDocuments.find((item) => item.id === docId);
+  if (!doc || doc.deletedAt || !canEditTrainingNote(doc)) {
+    return;
+  }
+  const version = skillVersion || doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  const updated = {
+    ...doc,
+    trainingNotes: {
+      ...(doc.trainingNotes || {}),
+      [version]: sanitizeRichText(html),
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
+  await loadDocuments();
 }
 
 function renderOriginalParagraph(paragraph, keyword = "") {
