@@ -90,6 +90,7 @@ const SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.26", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "记住登录稳定性修复", changes: ["记住登录状态改为 localStorage 与 Cookie 双通道保存。", "登录恢复成功后会按 7 天、30 天或永远自动续期。", "增加记住登录取值校验，避免异常值导致登录状态提前失效。"] },
   { version: "v1.8.25", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训话题页面重构", changes: ["培训材料的话题解析不再沿用 CEO 高层讲话组织风格。", "培训话题改为按知识点/概念、讲解场景、注意问题、知识扩展、练习任务和整体逻辑组织。", "培训 SKILL 默认版本升级到 v1.2，刷新后话题页会按培训学习框架展示。"] },
   { version: "v1.8.24", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话知识点闭环", changes: ["培训讲话分析从课程报告改为知识点/概念驱动。", "每个知识点下沉到讲解场景、注意问题、行业案例扩展和知识延伸。", "培训分析增加整体逻辑总结与用户富文本笔记，支持保存和更新。", "培训 SKILL 默认版本升级到 v1.1，已分析培训材料会提示可按新 SKILL 刷新。"] },
   { version: "v1.8.23", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训讲话分析 SKILL", changes: ["新增培训讲话资料类型，适配技术培训、业务培训、产品培训和方法论培训。", "新增培训讲话分析 SKILL.md，输出培训基础信息、学习目标、知识地图、关键概念、方法步骤、练习任务、误区纠偏、应用场景和后续计划。", "培训材料支持按需提炼话题，不再强行套高层视角文章结构。", "无话题但已完成分析的会议或培训材料，也可进入材料管理并参与 SKILL 刷新。"] },
@@ -123,6 +124,7 @@ const SYSTEM_VERSIONS = [
 const ADMIN_EMAIL = "Simon.Lv@fanruan.com";
 const ADMIN_EMAIL_KEY = ADMIN_EMAIL.toLowerCase();
 const SESSION_KEY = "ceo-speech-session";
+const SESSION_COOKIE_NAME = "talktoceo_session";
 const ADMIN_BOOTSTRAP_PASSWORD_KEY = "talktoceo-admin-bootstrap-password";
 const FONT_SETTINGS_KEY = "talktoceo-font-settings";
 const FONT_SIZE_PRESETS = [
@@ -1281,52 +1283,125 @@ function selectedRememberDuration() {
   return [...els.rememberDuration].find((input) => input.checked)?.value || "7";
 }
 
+function normalizeRememberDuration(value) {
+  return ["7", "30", "forever"].includes(String(value)) ? String(value) : "7";
+}
+
 function rememberLabel(value) {
-  if (value === "forever") {
+  const duration = normalizeRememberDuration(value);
+  if (duration === "forever") {
     return "永远";
   }
-  return `${value} 天`;
+  return `${duration} 天`;
 }
 
 function buildSession(emailKeyValue, duration) {
   const now = Date.now();
-  const expiresAt = duration === "forever"
+  const normalizedDuration = normalizeRememberDuration(duration);
+  const expiresAt = normalizedDuration === "forever"
     ? null
-    : now + Number(duration || 7) * 24 * 60 * 60 * 1000;
+    : now + Number(normalizedDuration) * 24 * 60 * 60 * 1000;
   return {
     emailKey: emailKeyValue,
-    remember: duration || "7",
+    remember: normalizedDuration,
     createdAt: now,
     expiresAt,
   };
 }
 
-function saveSession(emailKeyValue, duration) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(buildSession(emailKeyValue, duration)));
-  localStorage.removeItem("ceo-speech-current-user");
+function sessionMaxAge(duration) {
+  const normalizedDuration = normalizeRememberDuration(duration);
+  return normalizedDuration === "forever"
+    ? 10 * 365 * 24 * 60 * 60
+    : Number(normalizedDuration) * 24 * 60 * 60;
 }
 
-function readSession() {
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) {
-    const legacyKey = localStorage.getItem("ceo-speech-current-user");
-    return legacyKey ? buildSession(legacyKey, "7") : null;
+function writeSessionCookie(session) {
+  const maxAge = sessionMaxAge(session?.remember);
+  document.cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(session))}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
+}
+
+function readSessionCookie() {
+  const item = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`));
+  if (!item) {
+    return null;
   }
   try {
-    return JSON.parse(raw);
+    return JSON.parse(decodeURIComponent(item.slice(SESSION_COOKIE_NAME.length + 1)));
   } catch (error) {
-    clearSession();
+    clearSessionCookie();
     return null;
   }
 }
 
+function clearSessionCookie() {
+  document.cookie = `${SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Lax`;
+}
+
+function persistSession(session) {
+  writeSessionCookie(session);
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    localStorage.removeItem("ceo-speech-current-user");
+  } catch (error) {
+    // Cookie fallback keeps the remember-login flow working if localStorage is restricted.
+  }
+}
+
+function saveSession(emailKeyValue, duration) {
+  persistSession(buildSession(emailKeyValue, duration));
+}
+
+function readSession() {
+  let raw = "";
+  try {
+    raw = localStorage.getItem(SESSION_KEY);
+  } catch (error) {
+    return readSessionCookie();
+  }
+  if (!raw) {
+    let legacyKey = "";
+    try {
+      legacyKey = localStorage.getItem("ceo-speech-current-user");
+    } catch (error) {
+      legacyKey = "";
+    }
+    return legacyKey ? buildSession(legacyKey, "7") : readSessionCookie();
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch (storageError) {
+      // Ignore and continue with cookie fallback.
+    }
+    return readSessionCookie();
+  }
+}
+
 function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem("ceo-speech-current-user");
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem("ceo-speech-current-user");
+  } catch (error) {
+    // Ignore storage cleanup errors; cookie cleanup below is the important fallback.
+  }
+  clearSessionCookie();
 }
 
 function isSessionExpired(session) {
   return Boolean(session?.expiresAt && Date.now() > session.expiresAt);
+}
+
+function renewSession(session) {
+  if (!session?.emailKey) {
+    return;
+  }
+  persistSession(buildSession(session.emailKey, session.remember));
 }
 
 function randomPassword() {
@@ -3147,6 +3222,7 @@ async function restoreSession() {
   await putUser(updated);
   state.currentUser = updated;
   state.deepseekTestSignature = "";
+  renewSession(session);
   await logEvent("visit");
   await enterApp();
 }
