@@ -92,6 +92,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.30", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "SKILL 版本去重修复", changes: ["话题 SKILL 版本列表按资料类型和版本号去重。", "最新版判断改为按 v1.x 语义版本排序，避免旧自定义版本压过系统新版。", "发布新 SKILL 时会基于当前最大版本生成下一个版本号。"] },
   { version: "v1.8.29", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训 SKILL 深度展开", changes: ["培训 SKILL 默认版本升级到 v1.4。", "培训话题要求同时输出核心观点和详细展开，避免只生成简短提纲。", "知识体系延伸要求明确区分原文依据、模型扩展、行业案例和迁移应用。"] },
   { version: "v1.8.28", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "品牌更名为 Wistalk", changes: ["系统名称由 TalktoCEO 更名为 Wistalk。", "前端标题、侧边栏品牌、README、GitHub Pages 工作流名称同步更新。", "浏览器本地数据库和登录态 key 更名为 Wistalk，并保留旧数据迁移兼容。"] },
   { version: "v1.8.27", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训细颗粒话题拆解", changes: ["培训 SKILL 默认版本升级到 v1.3。", "培训材料要求按知识点、概念、方法、工具、步骤、误区和场景进行细颗粒拆解。", "约一小时培训默认拆出 10 个左右可学习话题，避免只生成少量大模块。"] },
@@ -1685,6 +1686,55 @@ function loadMaterialTaxonomy() {
   renderMaterialControls();
 }
 
+function skillTypeId(skill) {
+  return skill?.targetMaterialTypeId || "type-executive-view";
+}
+
+function parseSkillVersionParts(version = "") {
+  const matched = String(version || "").match(/^v?(\d+)(?:\.(\d+))?/i);
+  return {
+    major: matched ? Number(matched[1] || 0) : 0,
+    minor: matched ? Number(matched[2] || 0) : 0,
+  };
+}
+
+function compareSkillVersions(a, b) {
+  const left = parseSkillVersionParts(a?.version);
+  const right = parseSkillVersionParts(b?.version);
+  if (left.major !== right.major) {
+    return right.major - left.major;
+  }
+  if (left.minor !== right.minor) {
+    return right.minor - left.minor;
+  }
+  return Number(b?.versionNumber || 0) - Number(a?.versionNumber || 0);
+}
+
+function dedupeTopicSkills(skills) {
+  const map = new Map();
+  skills.filter(Boolean).forEach((skill) => {
+    const key = `${skillTypeId(skill)}::${skill.version || ""}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, skill);
+      return;
+    }
+    if (!existing.isPreset && skill.isPreset) {
+      return;
+    }
+    if (existing.isPreset && !skill.isPreset) {
+      map.set(key, skill);
+      return;
+    }
+    const existingTime = new Date(existing.createdAt || 0).getTime();
+    const skillTime = new Date(skill.createdAt || 0).getTime();
+    if (skillTime > existingTime) {
+      map.set(key, skill);
+    }
+  });
+  return [...map.values()].sort(compareSkillVersions);
+}
+
 function loadTopicSkills() {
   const custom = Array.isArray(state.currentUser?.topicSkills) ? state.currentUser.topicSkills : [];
   const normalizedCustom = custom.map((item) => {
@@ -1704,17 +1754,19 @@ function loadTopicSkills() {
     topicSkillTemplateForMaterialType("type-meeting-notes"),
     topicSkillTemplateForMaterialType("type-training-speech"),
   ];
-  state.topicSkills = [...defaultSkills, ...normalizedCustom.filter((item) => item.version !== DEFAULT_TOPIC_SKILL.version || (item.targetMaterialTypeId || "type-executive-view") !== "type-executive-view")]
-    .sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
+  state.topicSkills = dedupeTopicSkills([
+    ...defaultSkills,
+    ...normalizedCustom.filter((item) => item.version !== DEFAULT_TOPIC_SKILL.version || skillTypeId(item) !== "type-executive-view"),
+  ]);
 }
 
 function currentTopicSkill(materialTypeId = "type-executive-view") {
-  const scoped = state.topicSkills.filter((skill) => (skill.targetMaterialTypeId || "type-executive-view") === materialTypeId);
+  const scoped = state.topicSkills.filter((skill) => skillTypeId(skill) === materialTypeId).sort(compareSkillVersions);
   return scoped[0] || topicSkillTemplateForMaterialType(materialTypeId);
 }
 
 function skillByVersion(version, materialTypeId = "type-executive-view") {
-  return state.topicSkills.find((skill) => skill.version === version && (skill.targetMaterialTypeId || "type-executive-view") === materialTypeId)
+  return state.topicSkills.find((skill) => skill.version === version && skillTypeId(skill) === materialTypeId)
     || state.topicSkills.find((skill) => skill.version === version)
     || currentTopicSkill(materialTypeId);
 }
@@ -1730,7 +1782,7 @@ function skillVersionNumber(version) {
 function skillMetaForAnalysis(version, analysis) {
   const targetTypeId = analysis?.targetMaterialTypeId || "type-executive-view";
   const targetTypeName = materialTypeById(targetTypeId)?.name || analysis?.targetMaterialTypeName || "高层视角";
-  const ownedSkill = state.topicSkills.find((skill) => skill.version === version && (skill.targetMaterialTypeId || "type-executive-view") === targetTypeId)
+  const ownedSkill = state.topicSkills.find((skill) => skill.version === version && skillTypeId(skill) === targetTypeId)
     || state.topicSkills.find((skill) => skill.version === version);
   if (ownedSkill) {
     return ownedSkill;
@@ -1875,7 +1927,7 @@ function previousSkillForVersion(skill, versions) {
   if (!skill) {
     return null;
   }
-  const sorted = [...versions].sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
+  const sorted = [...versions].sort(compareSkillVersions);
   const currentIndex = sorted.findIndex((item) => item.version === skill.version);
   return currentIndex >= 0 ? sorted[currentIndex + 1] || null : null;
 }
@@ -2062,7 +2114,7 @@ async function saveTopicSkills(skills) {
   if (!state.currentUser) {
     return;
   }
-  const custom = skills.filter((skill) => !skill.isPreset);
+  const custom = dedupeTopicSkills(skills).filter((skill) => !skill.isPreset);
   const updated = {
     ...state.currentUser,
     topicSkills: custom,
@@ -2082,15 +2134,15 @@ async function createTopicSkillVersion(summary, prompt, changeLog = null) {
   }
   const targetTypeId = state.activeSkillMaterialTypeId || "type-executive-view";
   const targetType = materialTypeById(targetTypeId) || DEFAULT_MATERIAL_TYPES[0];
-  const scopedSkills = state.topicSkills.filter((skill) => (skill.targetMaterialTypeId || "type-executive-view") === targetTypeId);
+  const scopedSkills = state.topicSkills.filter((skill) => skillTypeId(skill) === targetTypeId);
   const previousSkill = currentTopicSkill(targetTypeId);
-  const maxVersion = Math.max(...scopedSkills.map((skill) => Number(skill.versionNumber || 1)), 1);
-  const nextVersionNumber = maxVersion + 1;
+  const maxMinor = Math.max(...scopedSkills.map((skill) => parseSkillVersionParts(skill.version).minor), 0);
+  const nextMinor = maxMinor + 1;
   const skill = {
     id: `topic-skill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     name: skillNameForMaterialType(targetType.name || "高层视角", targetTypeId),
-    version: `v1.${nextVersionNumber - 1}`,
-    versionNumber: nextVersionNumber,
+    version: `v1.${nextMinor}`,
+    versionNumber: nextMinor + 1,
     summary: summaryValue,
     prompt: promptValue,
     targetMaterialTypeId: targetTypeId,
@@ -5127,7 +5179,7 @@ function docSkillVersions(doc) {
       skill: skillMetaForAnalysis(version, analyses[version]),
       appliedAt: analyses[version]?.skillAppliedAt || doc.currentSkillAppliedAt || doc.updatedAt,
     }))
-    .sort((a, b) => Number(b.skill?.versionNumber || 0) - Number(a.skill?.versionNumber || 0));
+    .sort((a, b) => compareSkillVersions(a.skill || { version: a.version }, b.skill || { version: b.version }));
 }
 
 function docAnalysisForSkill(doc, version) {
@@ -7417,10 +7469,10 @@ function renderTopicSkillPage() {
   const activeType = materialTypeById(activeTypeId) || DEFAULT_MATERIAL_TYPES[0];
   const latest = currentTopicSkill(activeTypeId);
   const baseSkill = topicSkillTemplateForMaterialType(activeTypeId);
-  const versions = [...state.topicSkills]
-    .filter((skill) => (skill.targetMaterialTypeId || "type-executive-view") === activeTypeId)
-    .concat(state.topicSkills.some((skill) => skill.version === baseSkill.version && (skill.targetMaterialTypeId || "type-executive-view") === activeTypeId) ? [] : [baseSkill])
-    .sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0));
+  const versions = dedupeTopicSkills([
+    ...state.topicSkills.filter((skill) => skillTypeId(skill) === activeTypeId),
+    baseSkill,
+  ]);
   if (!versions.some((skill) => skill.version === latest.version)) {
     versions.unshift(latest);
   }
