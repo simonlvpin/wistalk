@@ -75,21 +75,24 @@
   analysisAbortController: null,
 };
 
-const DB_NAME = "ceo-speech-learning-db";
+const DB_NAME = "wistalk-learning-db";
+const LEGACY_DB_NAME = "ceo-speech-learning-db";
 const DB_VERSION = 5;
 const DOC_STORE = "documents";
 const USER_STORE = "users";
 const EVENT_STORE = "events";
 const CATEGORY_STORE = "docCategories";
 const PENDING_UPLOAD_STORE = "pendingUploads";
-const MATERIAL_SOURCES_KEY = "talktoceo-material-sources";
-const MATERIAL_TYPES_KEY = "talktoceo-material-types";
-const ANALYSIS_COMPLETED_REDIRECT_KEY = "talktoceo-analysis-completed-redirect";
-const ANALYSIS_RUNNING_KEY = "talktoceo-analysis-running";
-const SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
+const MATERIAL_SOURCES_KEY = "wistalk-material-sources";
+const MATERIAL_TYPES_KEY = "wistalk-material-types";
+const ANALYSIS_COMPLETED_REDIRECT_KEY = "wistalk-analysis-completed-redirect";
+const ANALYSIS_RUNNING_KEY = "wistalk-analysis-running";
+const SYSTEM_VERSION_STATE_KEY = "wistalk-system-version-state";
+const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.28", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "品牌更名为 Wistalk", changes: ["系统名称由 TalktoCEO 更名为 Wistalk。", "前端标题、侧边栏品牌、README、GitHub Pages 工作流名称同步更新。", "浏览器本地数据库和登录态 key 更名为 Wistalk，并保留旧数据迁移兼容。"] },
   { version: "v1.8.27", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训细颗粒话题拆解", changes: ["培训 SKILL 默认版本升级到 v1.3。", "培训材料要求按知识点、概念、方法、工具、步骤、误区和场景进行细颗粒拆解。", "约一小时培训默认拆出 10 个左右可学习话题，避免只生成少量大模块。"] },
   { version: "v1.8.26", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "记住登录稳定性修复", changes: ["记住登录状态改为 localStorage 与 Cookie 双通道保存。", "登录恢复成功后会按 7 天、30 天或永远自动续期。", "增加记住登录取值校验，避免异常值导致登录状态提前失效。"] },
   { version: "v1.8.25", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训话题页面重构", changes: ["培训材料的话题解析不再沿用 CEO 高层讲话组织风格。", "培训话题改为按知识点/概念、讲解场景、注意问题、知识扩展、练习任务和整体逻辑组织。", "培训 SKILL 默认版本升级到 v1.2，刷新后话题页会按培训学习框架展示。"] },
@@ -110,7 +113,7 @@ const SYSTEM_VERSIONS = [
   { version: "v1.8.10", date: "2026-05-28", updatedAt: "2026-05-28T10:26:36+08:00", title: "SKILL 页面字号与命名优化", changes: ["话题 SKILL 页面说明、输入框和 SKILL.md 内容区统一为普通文本字号。", "SKILL 类型来源与下拉框改为同一行。", "下拉框宽度按内容和场景收敛。", "SKILL 文件名按资料类型区分，并在材料列表中展示具体 SKILL 名称。"] },
   { version: "v1.8.9", date: "2026-05-28", updatedAt: "2026-05-28T10:13:44+08:00", title: "资料配置与 SKILL 类型联动", changes: ["资料管理中资料来源和资料类型改为各自全行配置。", "资料来源和资料类型支持下拉选择后修改或新增，不再提供删除入口。", "配置名称增加必填和20字符长度限制。", "话题 SKILL 按资料类型选择，资料类型名称修改后同步到对应 SKILL 类型。"] },
   { version: "v1.8.8", date: "2026-05-28", updatedAt: "2026-05-28T09:52:18+08:00", title: "高层视角话题 SKILL 模版", changes: ["话题 SKILL 页面改为上下布局。", "发布新版本时默认带出上一版本内容。", "扩写高层视角话题拆解 SKILL.md 标准模版。", "SKILL 数据增加适用材料类型，为会议纪要等后续 SKILL 预留扩展。"] },
-  { version: "v1.8.7", date: "2026-05-28", updatedAt: "2026-05-28T09:31:25+08:00", title: "系统配置体验优化", changes: ["统一系统配置页账号设置锚点定位。", "重新设计 11 套系统配色，提升常用界面搭配质感。", "更新 TalktoCEO 侧边栏标语。"] },
+  { version: "v1.8.7", date: "2026-05-28", updatedAt: "2026-05-28T09:31:25+08:00", title: "系统配置体验优化", changes: ["统一系统配置页账号设置锚点定位。", "重新设计 11 套系统配色，提升常用界面搭配质感。", "更新 Wistalk 侧边栏标语。"] },
   { version: "v1.8.6", date: "2026-05-28", updatedAt: "2026-05-28T09:07:13+08:00", title: "话题 SKILL 大厅", changes: ["SKILL 大厅新增话题 SKILL 子菜单。", "话题 SKILL 支持版本管理和新版本发布。", "材料列表可提示并刷新到最新 SKILL 版本。", "材料详情支持切换查看不同 SKILL 版本下的话题分析。"] },
   { version: "v1.8.5", date: "2026-05-28", updatedAt: "2026-05-28T08:57:02+08:00", title: "一级菜单扩展", changes: ["左侧一级菜单新增 PRISM。", "左侧一级菜单新增 SKILL 大厅。"] },
   { version: "v1.8.4", date: "2026-05-28", updatedAt: "2026-05-28T00:00:00+08:00", title: "材料编号", changes: ["材料列表增加材料编号展示。", "新分析材料自动生成 MA0001 形式的唯一材料编号。", "历史材料没有编号时按创建顺序兼容显示编号。"] },
@@ -124,10 +127,12 @@ const SYSTEM_VERSIONS = [
 ];
 const ADMIN_EMAIL = "Simon.Lv@fanruan.com";
 const ADMIN_EMAIL_KEY = ADMIN_EMAIL.toLowerCase();
-const SESSION_KEY = "ceo-speech-session";
-const SESSION_COOKIE_NAME = "talktoceo_session";
-const ADMIN_BOOTSTRAP_PASSWORD_KEY = "talktoceo-admin-bootstrap-password";
-const FONT_SETTINGS_KEY = "talktoceo-font-settings";
+const SESSION_KEY = "wistalk-session";
+const LEGACY_SESSION_KEY = "ceo-speech-session";
+const SESSION_COOKIE_NAME = "wistalk_session";
+const LEGACY_SESSION_COOKIE_NAME = "talktoceo_session";
+const ADMIN_BOOTSTRAP_PASSWORD_KEY = "wistalk-admin-bootstrap-password";
+const LEGACY_ADMIN_BOOTSTRAP_PASSWORD_KEY = "talktoceo-admin-bootstrap-password";
 const FONT_SIZE_PRESETS = [
   { id: "xsmall", name: "较小", note: "紧凑阅读", bodySize: "14px", buttonSize: "13px", titleSize: "22px" },
   { id: "small", name: "小", note: "当前推荐", bodySize: "15px", buttonSize: "14px", titleSize: "24px" },
@@ -647,40 +652,103 @@ const els = {
   studyTabs: document.querySelectorAll(".study-tab"),
 };
 
-function openDatabase() {
+const STORE_NAMES = [DOC_STORE, USER_STORE, EVENT_STORE, CATEGORY_STORE, PENDING_UPLOAD_STORE];
+
+function ensureObjectStores(db) {
+  if (!db.objectStoreNames.contains(DOC_STORE)) {
+    const store = db.createObjectStore(DOC_STORE, { keyPath: "id" });
+    store.createIndex("updatedAt", "updatedAt");
+  }
+  if (!db.objectStoreNames.contains(USER_STORE)) {
+    const store = db.createObjectStore(USER_STORE, { keyPath: "emailKey" });
+    store.createIndex("role", "role");
+    store.createIndex("status", "status");
+    store.createIndex("createdAt", "createdAt");
+  }
+  if (!db.objectStoreNames.contains(EVENT_STORE)) {
+    const store = db.createObjectStore(EVENT_STORE, { keyPath: "id" });
+    store.createIndex("emailKey", "emailKey");
+    store.createIndex("type", "type");
+    store.createIndex("createdAt", "createdAt");
+  }
+  if (!db.objectStoreNames.contains(CATEGORY_STORE)) {
+    const store = db.createObjectStore(CATEGORY_STORE, { keyPath: "id" });
+    store.createIndex("ownerEmailKey", "ownerEmailKey");
+    store.createIndex("createdAt", "createdAt");
+  }
+  if (!db.objectStoreNames.contains(PENDING_UPLOAD_STORE)) {
+    const store = db.createObjectStore(PENDING_UPLOAD_STORE, { keyPath: "ownerEmailKey" });
+    store.createIndex("updatedAt", "updatedAt");
+  }
+}
+
+function idbRequest(request) {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function openNamedDatabase(name) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, DB_VERSION);
     request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(DOC_STORE)) {
-        const store = db.createObjectStore(DOC_STORE, { keyPath: "id" });
-        store.createIndex("updatedAt", "updatedAt");
-      }
-      if (!db.objectStoreNames.contains(USER_STORE)) {
-        const store = db.createObjectStore(USER_STORE, { keyPath: "emailKey" });
-        store.createIndex("role", "role");
-        store.createIndex("status", "status");
-        store.createIndex("createdAt", "createdAt");
-      }
-      if (!db.objectStoreNames.contains(EVENT_STORE)) {
-        const store = db.createObjectStore(EVENT_STORE, { keyPath: "id" });
-        store.createIndex("emailKey", "emailKey");
-        store.createIndex("type", "type");
-        store.createIndex("createdAt", "createdAt");
-      }
-      if (!db.objectStoreNames.contains(CATEGORY_STORE)) {
-        const store = db.createObjectStore(CATEGORY_STORE, { keyPath: "id" });
-        store.createIndex("ownerEmailKey", "ownerEmailKey");
-        store.createIndex("createdAt", "createdAt");
-      }
-      if (!db.objectStoreNames.contains(PENDING_UPLOAD_STORE)) {
-        const store = db.createObjectStore(PENDING_UPLOAD_STORE, { keyPath: "ownerEmailKey" });
-        store.createIndex("updatedAt", "updatedAt");
-      }
+      ensureObjectStores(request.result);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+}
+
+async function databaseExists(name) {
+  if (!indexedDB.databases) {
+    return false;
+  }
+  const databases = await indexedDB.databases();
+  return databases.some((db) => db.name === name);
+}
+
+async function copyStoreData(sourceDb, targetDb, storeName) {
+  if (!sourceDb.objectStoreNames.contains(storeName) || !targetDb.objectStoreNames.contains(storeName)) {
+    return;
+  }
+  const targetCount = await idbRequest(targetDb.transaction(storeName, "readonly").objectStore(storeName).count());
+  if (targetCount > 0) {
+    return;
+  }
+  const items = await idbRequest(sourceDb.transaction(storeName, "readonly").objectStore(storeName).getAll());
+  if (!items.length) {
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const transaction = targetDb.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    items.forEach((item) => store.put(item));
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function migrateLegacyDatabase(targetDb) {
+  const migrationKey = "wistalk-db-migrated-from-ceo-speech";
+  if (localStorage.getItem(migrationKey) === "true" || !(await databaseExists(LEGACY_DB_NAME))) {
+    return;
+  }
+  const sourceDb = await openNamedDatabase(LEGACY_DB_NAME);
+  try {
+    for (const storeName of STORE_NAMES) {
+      await copyStoreData(sourceDb, targetDb, storeName);
+    }
+    localStorage.setItem(migrationKey, "true");
+  } finally {
+    sourceDb.close();
+  }
+}
+
+async function openDatabase() {
+  const db = await openNamedDatabase(DB_NAME);
+  await migrateLegacyDatabase(db);
+  return db;
 }
 
 async function withStore(storeName, mode, callback) {
@@ -1103,7 +1171,7 @@ async function saveCurrentDocument() {
   }
 
   const now = new Date().toISOString();
-  const title = normalizeDocTitle(els.docNameInput.value || state.fileName || "未命名 CEO 讲话");
+  const title = normalizeDocTitle(els.docNameInput.value || state.fileName || "未命名材料");
   const tags = parseTags(els.tagInput.value);
   const category = categoryById(els.docCategorySelect.value);
   const materialSource = materialSourceById(els.materialSourceSelect?.value);
@@ -1255,7 +1323,7 @@ function parseTags(value) {
 }
 
 function normalizeDocTitle(value) {
-  return String(value || "").trim().slice(0, 80) || "未命名 CEO 讲话";
+  return String(value || "").trim().slice(0, 80) || "未命名材料";
 }
 
 function normalizeEmail(value) {
@@ -1331,30 +1399,39 @@ function writeSessionCookie(session) {
   document.cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(session))}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
 }
 
-function readSessionCookie() {
+function readCookieJson(name) {
   const item = document.cookie
     .split(";")
     .map((part) => part.trim())
-    .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`));
+    .find((part) => part.startsWith(`${name}=`));
   if (!item) {
     return null;
   }
   try {
-    return JSON.parse(decodeURIComponent(item.slice(SESSION_COOKIE_NAME.length + 1)));
+    return JSON.parse(decodeURIComponent(item.slice(name.length + 1)));
   } catch (error) {
-    clearSessionCookie();
     return null;
   }
 }
 
+function readSessionCookie() {
+  const session = readCookieJson(SESSION_COOKIE_NAME) || readCookieJson(LEGACY_SESSION_COOKIE_NAME);
+  if (!session) {
+    clearSessionCookie();
+  }
+  return session;
+}
+
 function clearSessionCookie() {
   document.cookie = `${SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Lax`;
+  document.cookie = `${LEGACY_SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Lax`;
 }
 
 function persistSession(session) {
   writeSessionCookie(session);
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    localStorage.removeItem(LEGACY_SESSION_KEY);
     localStorage.removeItem("ceo-speech-current-user");
   } catch (error) {
     // Cookie fallback keeps the remember-login flow working if localStorage is restricted.
@@ -1368,7 +1445,7 @@ function saveSession(emailKeyValue, duration) {
 function readSession() {
   let raw = "";
   try {
-    raw = localStorage.getItem(SESSION_KEY);
+    raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem(LEGACY_SESSION_KEY);
   } catch (error) {
     return readSessionCookie();
   }
@@ -1386,6 +1463,7 @@ function readSession() {
   } catch (error) {
     try {
       localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(LEGACY_SESSION_KEY);
     } catch (storageError) {
       // Ignore and continue with cookie fallback.
     }
@@ -1396,6 +1474,7 @@ function readSession() {
 function clearSession() {
   try {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LEGACY_SESSION_KEY);
     localStorage.removeItem("ceo-speech-current-user");
   } catch (error) {
     // Ignore storage cleanup errors; cookie cleanup below is the important fallback.
@@ -1492,6 +1571,7 @@ async function ensureAdminUser() {
   };
   await putUser(admin);
   localStorage.setItem(ADMIN_BOOTSTRAP_PASSWORD_KEY, bootstrapPassword);
+  localStorage.removeItem(LEGACY_ADMIN_BOOTSTRAP_PASSWORD_KEY);
   return admin;
 }
 
@@ -3210,7 +3290,7 @@ async function restoreSession() {
   const session = readSession();
   if (!session?.emailKey) {
     renderAuthGate();
-    const bootstrapPassword = localStorage.getItem(ADMIN_BOOTSTRAP_PASSWORD_KEY);
+    const bootstrapPassword = localStorage.getItem(ADMIN_BOOTSTRAP_PASSWORD_KEY) || localStorage.getItem(LEGACY_ADMIN_BOOTSTRAP_PASSWORD_KEY);
     if (bootstrapPassword) {
       showAuthMessage(`首次初始化管理员账号：${ADMIN_EMAIL}，本次初始密码：${bootstrapPassword}。登录后请立即修改密码。`, "success");
     }
@@ -3280,6 +3360,7 @@ async function rescueAdminPassword() {
       };
   await putUser(updated);
   localStorage.setItem(ADMIN_BOOTSTRAP_PASSWORD_KEY, password);
+  localStorage.removeItem(LEGACY_ADMIN_BOOTSTRAP_PASSWORD_KEY);
   showAuthMessage(`管理员新密码已生成：${password}。请先登录再修改密码。`, "success");
 }
 
@@ -3528,7 +3609,7 @@ function buildOverview(grouped, sentences, text) {
 
   const oneLine = core
     ? `这篇讲话的核心，是围绕“${topCategories.join("、") || "经营管理"}”建立一套从判断到行动、从实践到反馈的组织学习机制。`
-    : "请上传或粘贴 CEO 讲话原文，系统会生成核心思想。";
+    : "请上传或粘贴材料原文，系统会生成核心思想。";
 
   const logicLine = topCategories.length
     ? `识别出的主线是：先定义核心命题，再把观点分入${topCategories.join("、")}等维度，最后反向拆成可学习的问题文章。`
@@ -7862,7 +7943,7 @@ function buildRecyclePreviewHtml(docs) {
 
 function readSystemVersionState() {
   try {
-    return JSON.parse(localStorage.getItem(SYSTEM_VERSION_STATE_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(SYSTEM_VERSION_STATE_KEY) || localStorage.getItem(LEGACY_SYSTEM_VERSION_STATE_KEY) || "{}");
   } catch (error) {
     return {};
   }
@@ -7870,6 +7951,7 @@ function readSystemVersionState() {
 
 function saveSystemVersionState(next) {
   localStorage.setItem(SYSTEM_VERSION_STATE_KEY, JSON.stringify(next));
+  localStorage.removeItem(LEGACY_SYSTEM_VERSION_STATE_KEY);
 }
 
 function canRollbackVersion(version) {
@@ -8129,7 +8211,7 @@ function buildDrillWhy(question, topic) {
     return `这个问题的价值，是逼你把“${topic.category.name}”从观点层继续下探到矛盾层。只有说清楚矛盾，CEO 的做法才不是一句正确的话，而是一套能迁移的判断方法。`;
   }
   if (/关键|动作|忽略/.test(question)) {
-    return `这个问题把注意力放在动作上：同样的管理理念，不同动作会产生完全不同的组织结果。学习 CEO 讲话，关键不是记住结论，而是找出哪个动作让结论成立。`;
+    return `这个问题把注意力放在动作上：同样的管理理念，不同动作会产生完全不同的组织结果。学习材料，关键不是记住结论，而是找出哪个动作让结论成立。`;
   }
   return `这个问题用于判断方法的适用边界。你不是把 CEO 的话原样搬走，而是理解它在什么条件下有效、迁移时需要改哪一层。`;
 }
@@ -8710,7 +8792,7 @@ function buildMarkdown() {
   const { overview, activeCategories, topics, quotes, deepeningModes: modelDeepeningModes } = state.analysis;
   const modes = modelDeepeningModes || deepeningModes;
   const lines = [
-    `# ${state.fileName || "CEO 讲话拆解"}`,
+    `# ${state.fileName || "材料拆解"}`,
     "",
     "## 一、核心思想一句话概括",
     overview.oneLine,
@@ -8811,7 +8893,7 @@ function exportMarkdown() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${(state.fileName || "ceo-speech-analysis").replace(/\.[^.]+$/, "")}-拆解.md`;
+  link.download = `${(state.fileName || "wistalk-analysis").replace(/\.[^.]+$/, "")}-拆解.md`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -8843,7 +8925,7 @@ async function copyMarkdown() {
 
 function resetResults() {
   els.docTitle.textContent = "尚未分析材料";
-  els.oneLine.textContent = "上传 CEO 讲话后，这里会生成核心思想。";
+  els.oneLine.textContent = "上传材料后，这里会生成核心思想。";
   els.logicLine.textContent = "系统会自动识别战略、数字化、AI、组织、流程、数据、激励、文化、领导力等维度。";
   els.metricTopics.textContent = "0";
   els.metricCategories.textContent = "0";
@@ -9070,8 +9152,8 @@ els.sampleBtn?.addEventListener("click", () => {
     return;
   }
   state.currentDocId = "";
-  state.fileName = "CEO讲话示例.txt";
-  els.docNameInput.value = "CEO 讲话示例";
+  state.fileName = "材料示例.txt";
+  els.docNameInput.value = "材料示例";
   els.docCategorySelect.value = "preset-strategy";
   els.tagInput.value = "战略, 数字化, AI, 组织管理";
   els.sourceText.value = sampleText;
