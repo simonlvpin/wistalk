@@ -92,6 +92,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.29", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训 SKILL 深度展开", changes: ["培训 SKILL 默认版本升级到 v1.4。", "培训话题要求同时输出核心观点和详细展开，避免只生成简短提纲。", "知识体系延伸要求明确区分原文依据、模型扩展、行业案例和迁移应用。"] },
   { version: "v1.8.28", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "品牌更名为 Wistalk", changes: ["系统名称由 TalktoCEO 更名为 Wistalk。", "前端标题、侧边栏品牌、README、GitHub Pages 工作流名称同步更新。", "浏览器本地数据库和登录态 key 更名为 Wistalk，并保留旧数据迁移兼容。"] },
   { version: "v1.8.27", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训细颗粒话题拆解", changes: ["培训 SKILL 默认版本升级到 v1.3。", "培训材料要求按知识点、概念、方法、工具、步骤、误区和场景进行细颗粒拆解。", "约一小时培训默认拆出 10 个左右可学习话题，避免只生成少量大模块。"] },
   { version: "v1.8.26", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "记住登录稳定性修复", changes: ["记住登录状态改为 localStorage 与 Cookie 双通道保存。", "登录恢复成功后会按 7 天、30 天或永远自动续期。", "增加记住登录取值校验，避免异常值导致登录状态提前失效。"] },
@@ -359,6 +360,14 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 5. 总结整场培训的知识点整体逻辑，说明这些知识点之间如何层层递进或相互支撑。
 6. 为用户后续笔记预留空间，前端会提供富文本笔记保存能力。
 
+内容深度要求：
+- 每个知识点都要先给“核心观点”，再做“详细展开”。
+- 核心观点可以精简，一般 1-2 句，用于快速抓住结论。
+- 详细展开必须充分，通常 120-220 字，解释概念含义、适用前提、运作机制、为什么成立、与原文场景的关系。
+- 老师原文讲得简短时，不能只复述短句；要在不编造事实的前提下，把原文隐含的业务逻辑、技术逻辑、操作逻辑讲透。
+- 所有大模型补充的行业案例、类比、迁移场景、学习建议必须显式标注 [扩展]；基于原文合理推导但原文未明说的内容标注 [推断]。
+- 不允许只输出“是什么”的标签化结论，还要解释“为什么重要、怎么用、什么情况下会失效、如何练习”。
+
 培训材料必须尽量细颗粒拆解。topics 不是可有可无的摘要模块，而是用户真正学习的“细知识点文章”。除非原文极短或完全没有教学内容，否则必须输出 topics。
 数量要求：
 - 短培训或片段材料：至少 5-8 个话题。
@@ -385,10 +394,10 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
    - 前置基础
 2. knowledgeItems
    - 每个元素代表一个知识点、概念、方法或工具。
-   - 必须包含：名称、类型、原文解释、为什么重要、原文依据。
-   - 必须包含：老师讲到的场景列表，每个场景说明场景名称、业务/技术语境、老师如何讲、适用条件、原文依据。
-   - 必须包含：注意问题列表，说明误区/风险/边界、为什么容易出错、纠偏方式、原文依据。
-   - 必须包含：知识扩展列表，用 [扩展] 标注行业案例、关联知识点、迁移场景、可进一步学习的内容。
+   - 必须包含：名称、类型、核心观点、原文解释、详细展开、为什么重要、原文依据。
+   - 必须包含：老师讲到的场景列表，每个场景说明场景名称、业务/技术语境、老师如何讲、场景详细展开、适用条件、原文依据。
+   - 必须包含：注意问题列表，说明误区/风险/边界、为什么容易出错、详细分析、纠偏方式、原文依据。
+   - 必须包含：知识扩展列表，用 [扩展] 标注行业案例、案例详细展开、关联知识点、迁移场景、学习建议。
    - 必须包含：练习任务，帮助学员把这个知识点用出来。
 3. overallLogic
    - 整体逻辑一句话
@@ -405,6 +414,9 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 - 不要把 topic 写成管理文章，也不要把普通知识点包装成 CEO 战略话题。
 - 若输出 topics，每个话题必须按培训学习框架组织：知识点/概念、讲解场景、注意问题、知识扩展、练习任务、整体逻辑和学习者收获。
 - 约 1 小时培训内容，topics 数量通常不少于 10 个；如果少于 8 个，必须在 topicExtractionNote 里解释为什么无法继续细拆。
+- 每个 trainingTopic 必须包含：coreViewpoint 和 detailedExplanation。
+- 每个 trainingTopic 的 detailedExplanation 要能成为一段完整学习文章，不少于 120 字；不要只写一句话。
+- 讲解场景、注意问题、知识体系延伸也要尽量展开，不能只给短语。
 
 ## 5. 输出原则
 - 事实优先，所有内容基于原文。
@@ -1794,8 +1806,8 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
   return {
     ...DEFAULT_TOPIC_SKILL,
     id: isExecutive ? DEFAULT_TOPIC_SKILL.id : `topic-skill-default-${materialTypeId}`,
-    version: kind === "training" ? "v1.3" : DEFAULT_TOPIC_SKILL.version,
-    versionNumber: kind === "training" ? 4 : DEFAULT_TOPIC_SKILL.versionNumber,
+    version: kind === "training" ? "v1.4" : DEFAULT_TOPIC_SKILL.version,
+    versionNumber: kind === "training" ? 5 : DEFAULT_TOPIC_SKILL.versionNumber,
     name: skillNameForMaterialType(typeName, materialTypeId),
     summary: isExecutive
       ? DEFAULT_TOPIC_SKILL.summary
@@ -1815,7 +1827,7 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
       : kind === "meeting"
         ? ["初始版本：建立会议基础信息、决策、行动项、议题讨论、协作态势、风险依赖和待定问题的分析标准。"]
         : kind === "training"
-          ? ["v1.3：培训材料按更细颗粒度拆解，约一小时培训默认拆出 10 个左右知识点话题，避免少量大模块式总结。"]
+          ? ["v1.4：培训话题在细颗粒拆解基础上增加核心观点、详细展开、场景展开、风险分析和知识延伸，避免只生成简短提纲。"]
         : [`初始版本：建立${typeName}材料的话题拆解 SKILL.md 基础模版。`],
     isPreset: true,
   };
@@ -4218,25 +4230,30 @@ ${text}
     "knowledgeItems": [{
       "name": "",
       "type": "概念/知识点/方法/工具/流程",
+      "coreViewpoint": "",
       "originalExplanation": "",
+      "detailedExplanation": "",
       "whyImportant": "",
       "evidence": [],
       "scenarios": [{
         "name": "",
         "context": "",
         "teacherExplanation": "",
+        "detailedExpansion": "",
         "applicability": "",
         "evidence": ""
       }],
       "attentionPoints": [{
         "issue": "",
         "whyItMatters": "",
+        "detailedAnalysis": "",
         "correction": "",
         "evidence": ""
       }],
       "extensions": [{
         "title": "",
         "industryCase": "",
+        "detailedExpansion": "",
         "relatedKnowledge": "",
         "transferScenario": "",
         "learningSuggestion": ""
@@ -4268,23 +4285,28 @@ ${text}
       "knowledgeName": "",
       "knowledgeType": "概念/知识点/方法/工具/流程",
       "learningQuestion": "",
+      "coreViewpoint": "",
       "teacherExplanation": "",
+      "detailedExplanation": "",
       "scenarios": [{
         "name": "",
         "context": "",
         "teacherExplanation": "",
+        "detailedExpansion": "",
         "applicability": "",
         "evidence": ""
       }],
       "attentionPoints": [{
         "issue": "",
         "whyItMatters": "",
+        "detailedAnalysis": "",
         "correction": "",
         "evidence": ""
       }],
       "extensions": [{
         "title": "",
         "industryCase": "",
+        "detailedExpansion": "",
         "relatedKnowledge": "",
         "transferScenario": "",
         "learningSuggestion": ""
@@ -4320,11 +4342,15 @@ ${text}
 14. 培训 topics 不能使用 CEO 高层讲话文章结构，不要输出 CEO 解法、毛选视角、战略/组织管理式文章。
 15. 每个 topic 必须围绕一个细知识点/概念/方法/工具/步骤/误区/场景来组织，并输出 trainingTopic。
 16. trainingTopic 必须包含：知识点名称、学习问题、老师怎么讲、讲解场景、注意问题、知识扩展、练习任务、整体逻辑和学习者收获。
-17. topics 中每个话题至少提供 2 条原文证据，证据必须能直接支撑这个细话题。
-18. 不要把多个不同知识点合并成一个大话题；宁可拆细，也不要粗略概括。
-19. language 必须中文，内容必须贴合原文；原文依据不能编造，扩展内容必须标注 [扩展]。
+17. trainingTopic 必须同时包含 coreViewpoint 和 detailedExplanation：coreViewpoint 用 1-2 句给出核心观点，detailedExplanation 用 120-220 字展开讲清楚含义、机制、应用方式、边界和与原文场景的关系。
+18. scenarios 中的 detailedExpansion 要解释这个场景为什么能说明该知识点，通常 80-160 字；不要只写短语。
+19. attentionPoints 中的 detailedAnalysis 要解释风险成因、触发条件、后果和纠偏逻辑，通常 80-160 字。
+20. extensions 中的 detailedExpansion 必须用 [扩展] 标注，结合行业案例、类比或迁移场景展开，通常 100-200 字。
+21. topics 中每个话题至少提供 2 条原文证据，证据必须能直接支撑这个细话题。
+22. 不要把多个不同知识点合并成一个大话题；宁可拆细，也不要粗略概括。
+23. language 必须中文，内容必须贴合原文；原文依据不能编造，扩展内容必须标注 [扩展]。
 ${skillInstruction}
-  19. 这个培训讲话原文如下：
+  24. 这个培训讲话原文如下：
 ${text}
       `.trim(),
       },
@@ -4612,7 +4638,9 @@ function normalizeTrainingAnalysis(input = null) {
     ...(Array.isArray(input.keyConcepts) ? input.keyConcepts.map((item) => ({
       name: item.name || "关键概念",
       type: "概念",
+      coreViewpoint: item.explanation || item.name || "关键概念",
       originalExplanation: item.explanation || "未提及",
+      detailedExplanation: item.explanation || "未提及",
       whyImportant: "来自旧版培训分析的关键概念。",
       evidence: [item.example].filter(Boolean),
       scenarios: item.example ? [{ name: "原文例子", context: item.example, teacherExplanation: item.explanation || "未提及", applicability: "未提及", evidence: item.example }] : [],
@@ -4623,7 +4651,9 @@ function normalizeTrainingAnalysis(input = null) {
     ...(Array.isArray(input.methodsAndSteps) ? input.methodsAndSteps.map((item) => ({
       name: item.method || "方法步骤",
       type: "方法",
+      coreViewpoint: item.method || "方法步骤",
       originalExplanation: item.scenario || "未提及",
+      detailedExplanation: item.scenario || "未提及",
       whyImportant: "来自旧版培训分析的方法步骤。",
       evidence: [],
       scenarios: item.scenario ? [{ name: "适用场景", context: item.scenario, teacherExplanation: item.method || "未提及", applicability: item.scenario, evidence: "" }] : [],
@@ -4636,25 +4666,30 @@ function normalizeTrainingAnalysis(input = null) {
     ? input.knowledgeItems.map((item) => ({
         name: item.name || item.title || "未命名知识点",
         type: item.type || "知识点",
+        coreViewpoint: item.coreViewpoint || item.summary || item.originalExplanation || item.explanation || "未提及",
         originalExplanation: item.originalExplanation || item.explanation || "未提及",
+        detailedExplanation: item.detailedExplanation || item.detail || item.expandedExplanation || item.originalExplanation || item.explanation || "未提及",
         whyImportant: item.whyImportant || "未提及",
         evidence: normalizeTextList(item.evidence),
         scenarios: normalizeList(item.scenarios).map((scenario) => ({
           name: scenario.name || scenario.title || "讲解场景",
           context: scenario.context || "未提及",
           teacherExplanation: scenario.teacherExplanation || scenario.explanation || "未提及",
+          detailedExpansion: scenario.detailedExpansion || scenario.detail || scenario.expandedExplanation || scenario.teacherExplanation || scenario.explanation || "未提及",
           applicability: scenario.applicability || "未提及",
           evidence: scenario.evidence || "",
         })),
         attentionPoints: normalizeList(item.attentionPoints).map((point) => ({
           issue: point.issue || point.risk || point.misunderstanding || "未提及",
           whyItMatters: point.whyItMatters || point.reason || "未提及",
+          detailedAnalysis: point.detailedAnalysis || point.analysis || point.whyItMatters || point.reason || "未提及",
           correction: point.correction || point.solution || "未提及",
           evidence: point.evidence || "",
         })),
         extensions: normalizeList(item.extensions).map((extension) => ({
           title: extension.title || "知识延伸",
           industryCase: extension.industryCase || extension.case || "未提及",
+          detailedExpansion: extension.detailedExpansion || extension.detail || extension.expandedExplanation || extension.industryCase || extension.case || "未提及",
           relatedKnowledge: extension.relatedKnowledge || "未提及",
           transferScenario: extension.transferScenario || "未提及",
           learningSuggestion: extension.learningSuggestion || "未提及",
@@ -4708,23 +4743,28 @@ function normalizeTrainingTopic(input = null) {
     knowledgeName: input.knowledgeName || input.name || "",
     knowledgeType: input.knowledgeType || input.type || "知识点",
     learningQuestion: input.learningQuestion || input.title || "",
+    coreViewpoint: input.coreViewpoint || input.summary || input.teacherExplanation || input.originalExplanation || input.explanation || "",
     teacherExplanation: input.teacherExplanation || input.originalExplanation || input.explanation || "",
+    detailedExplanation: input.detailedExplanation || input.detail || input.expandedExplanation || input.teacherExplanation || input.originalExplanation || input.explanation || "",
     scenarios: normalizeList(input.scenarios).map((scenario) => ({
       name: scenario.name || scenario.title || "讲解场景",
       context: scenario.context || "未提及",
       teacherExplanation: scenario.teacherExplanation || scenario.explanation || "未提及",
+      detailedExpansion: scenario.detailedExpansion || scenario.detail || scenario.expandedExplanation || scenario.teacherExplanation || scenario.explanation || "未提及",
       applicability: scenario.applicability || "未提及",
       evidence: scenario.evidence || "",
     })),
     attentionPoints: normalizeList(input.attentionPoints).map((point) => ({
       issue: point.issue || point.risk || point.misunderstanding || "注意问题",
       whyItMatters: point.whyItMatters || point.reason || "未提及",
+      detailedAnalysis: point.detailedAnalysis || point.analysis || point.whyItMatters || point.reason || "未提及",
       correction: point.correction || point.solution || "未提及",
       evidence: point.evidence || "",
     })),
     extensions: normalizeList(input.extensions).map((extension) => ({
       title: extension.title || "知识延伸",
       industryCase: extension.industryCase || extension.case || "未提及",
+      detailedExpansion: extension.detailedExpansion || extension.detail || extension.expandedExplanation || extension.industryCase || extension.case || "未提及",
       relatedKnowledge: extension.relatedKnowledge || "未提及",
       transferScenario: extension.transferScenario || "未提及",
       learningSuggestion: extension.learningSuggestion || "未提及",
@@ -6241,7 +6281,9 @@ function buildTrainingAnalysisHtml(trainingAnalysis, doc = null, skillVersion = 
               </div>
             </div>
             <div class="training-knowledge-summary">
+              <p><strong>核心观点：</strong>${escapeHtml(item.coreViewpoint || "未提及")}</p>
               <p><strong>老师原文解释：</strong>${escapeHtml(item.originalExplanation || "未提及")}</p>
+              <p><strong>详细展开：</strong>${escapeHtml(item.detailedExplanation || item.originalExplanation || "未提及")}</p>
               <p><strong>为什么重要：</strong>${escapeHtml(item.whyImportant || "未提及")}</p>
               <p><strong>原文依据：</strong>${escapeHtml(listText(item.evidence) || "未提及")}</p>
             </div>
@@ -6253,6 +6295,7 @@ function buildTrainingAnalysisHtml(trainingAnalysis, doc = null, skillVersion = 
                     <strong>${escapeHtml(scenario.name || "讲解场景")}</strong>
                     <p><b>场景语境：</b>${escapeHtml(scenario.context || "未提及")}</p>
                     <p><b>老师怎么讲：</b>${escapeHtml(scenario.teacherExplanation || "未提及")}</p>
+                    <p><b>场景展开：</b>${escapeHtml(scenario.detailedExpansion || scenario.teacherExplanation || "未提及")}</p>
                     <p><b>适用条件：</b>${escapeHtml(scenario.applicability || "未提及")}</p>
                     <p><b>原文依据：</b>${escapeHtml(scenario.evidence || "未提及")}</p>
                   </div>
@@ -6264,6 +6307,7 @@ function buildTrainingAnalysisHtml(trainingAnalysis, doc = null, skillVersion = 
                   <div class="training-mini-item">
                     <strong>${escapeHtml(point.issue || "注意问题")}</strong>
                     <p><b>为什么要注意：</b>${escapeHtml(point.whyItMatters || "未提及")}</p>
+                    <p><b>详细分析：</b>${escapeHtml(point.detailedAnalysis || point.whyItMatters || "未提及")}</p>
                     <p><b>纠偏方式：</b>${escapeHtml(point.correction || "未提及")}</p>
                     <p><b>原文依据：</b>${escapeHtml(point.evidence || "未提及")}</p>
                   </div>
@@ -6275,6 +6319,7 @@ function buildTrainingAnalysisHtml(trainingAnalysis, doc = null, skillVersion = 
                   <div class="training-mini-item">
                     <strong>${escapeHtml(extension.title || "知识延伸")}</strong>
                     <p><b>行业案例：</b>${escapeHtml(extension.industryCase || "未提及")}</p>
+                    <p><b>扩展说明：</b>${escapeHtml(extension.detailedExpansion || extension.industryCase || "未提及")}</p>
                     <p><b>关联知识：</b>${escapeHtml(extension.relatedKnowledge || "未提及")}</p>
                     <p><b>迁移场景：</b>${escapeHtml(extension.transferScenario || "未提及")}</p>
                     <p><b>学习建议：</b>${escapeHtml(extension.learningSuggestion || "未提及")}</p>
@@ -6683,7 +6728,9 @@ function buildTrainingTopicArticleHtml(topic, row = null) {
           <p><strong>知识点名称：</strong>${escapeHtml(trainingTopic.knowledgeName || topic.title || "未提及")}</p>
           <p><strong>知识点类型：</strong>${escapeHtml(trainingTopic.knowledgeType || "知识点")}</p>
           <p><strong>学习问题：</strong>${escapeHtml(trainingTopic.learningQuestion || topic.title || "未提及")}</p>
+          <p><strong>核心观点：</strong>${escapeHtml(trainingTopic.coreViewpoint || "未提及")}</p>
           <p><strong>老师怎么讲：</strong>${escapeHtml(trainingTopic.teacherExplanation || "未提及")}</p>
+          <p><strong>详细展开：</strong>${escapeHtml(trainingTopic.detailedExplanation || trainingTopic.teacherExplanation || "未提及")}</p>
         </div>
       </section>
       <section class="article-section training-topic-section training-topic-scenarios">
@@ -6693,6 +6740,7 @@ function buildTrainingTopicArticleHtml(topic, row = null) {
             <h4>${escapeHtml(scenario.name || "讲解场景")}</h4>
             <p><strong>场景语境：</strong>${escapeHtml(scenario.context || "未提及")}</p>
             <p><strong>老师怎么讲：</strong>${escapeHtml(scenario.teacherExplanation || "未提及")}</p>
+            <p><strong>场景展开：</strong>${escapeHtml(scenario.detailedExpansion || scenario.teacherExplanation || "未提及")}</p>
             <p><strong>适用条件：</strong>${escapeHtml(scenario.applicability || "未提及")}</p>
             <p><strong>原文依据：</strong>${escapeHtml(scenario.evidence || "未提及")}</p>
           </div>
@@ -6704,6 +6752,7 @@ function buildTrainingTopicArticleHtml(topic, row = null) {
           <div class="training-topic-card">
             <h4>${escapeHtml(point.issue || "注意问题")}</h4>
             <p><strong>为什么要注意：</strong>${escapeHtml(point.whyItMatters || "未提及")}</p>
+            <p><strong>详细分析：</strong>${escapeHtml(point.detailedAnalysis || point.whyItMatters || "未提及")}</p>
             <p><strong>纠偏方式：</strong>${escapeHtml(point.correction || "未提及")}</p>
             <p><strong>原文依据：</strong>${escapeHtml(point.evidence || "未提及")}</p>
           </div>
@@ -6715,6 +6764,7 @@ function buildTrainingTopicArticleHtml(topic, row = null) {
           <div class="training-topic-card">
             <h4>${escapeHtml(extension.title || "知识延伸")}</h4>
             <p><strong>行业案例：</strong>${escapeHtml(extension.industryCase || "未提及")}</p>
+            <p><strong>扩展说明：</strong>${escapeHtml(extension.detailedExpansion || extension.industryCase || "未提及")}</p>
             <p><strong>关联知识：</strong>${escapeHtml(extension.relatedKnowledge || "未提及")}</p>
             <p><strong>迁移场景：</strong>${escapeHtml(extension.transferScenario || "未提及")}</p>
             <p><strong>学习建议：</strong>${escapeHtml(extension.learningSuggestion || "未提及")}</p>
@@ -8826,13 +8876,15 @@ function buildMarkdown() {
         `- 知识点名称：${trainingTopic.knowledgeName || ""}`,
         `- 知识点类型：${trainingTopic.knowledgeType || ""}`,
         `- 学习问题：${trainingTopic.learningQuestion || ""}`,
+        `- 核心观点：${trainingTopic.coreViewpoint || ""}`,
         `- 老师怎么讲：${trainingTopic.teacherExplanation || ""}`,
+        `- 详细展开：${trainingTopic.detailedExplanation || ""}`,
         "- 讲解场景：",
-        ...(trainingTopic.scenarios || []).map((item) => `  - ${item.name}：${item.context}｜${item.teacherExplanation}｜适用条件：${item.applicability}`),
+        ...(trainingTopic.scenarios || []).map((item) => `  - ${item.name}：${item.context}｜${item.teacherExplanation}｜展开：${item.detailedExpansion || ""}｜适用条件：${item.applicability}`),
         "- 注意问题：",
-        ...(trainingTopic.attentionPoints || []).map((item) => `  - ${item.issue}：${item.whyItMatters}｜纠偏：${item.correction}`),
+        ...(trainingTopic.attentionPoints || []).map((item) => `  - ${item.issue}：${item.whyItMatters}｜分析：${item.detailedAnalysis || ""}｜纠偏：${item.correction}`),
         "- 知识体系延伸：",
-        ...(trainingTopic.extensions || []).map((item) => `  - ${item.title}：${item.industryCase}｜关联知识：${item.relatedKnowledge}｜迁移场景：${item.transferScenario}`),
+        ...(trainingTopic.extensions || []).map((item) => `  - ${item.title}：${item.industryCase}｜扩展：${item.detailedExpansion || ""}｜关联知识：${item.relatedKnowledge}｜迁移场景：${item.transferScenario}`),
         "- 练习任务：",
         `  - 任务：${trainingTopic.practice?.task || ""}`,
         ...(trainingTopic.practice?.steps || []).map((item) => `  - 步骤：${item}`),
