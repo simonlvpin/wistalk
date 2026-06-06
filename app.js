@@ -92,6 +92,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.31", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训弱话题容错", changes: ["培训和会议分析遇到证据不足的话题时自动过滤，不再让整份材料刷新失败。", "培训 SKILL 默认版本升级到 v1.5，禁止把课程预告、转场和下一节安排强行生成知识点话题。", "被过滤的话题会写入 topicExtractionNote，便于回看模型输出问题。"] },
   { version: "v1.8.30", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "SKILL 版本去重修复", changes: ["话题 SKILL 版本列表按资料类型和版本号去重。", "最新版判断改为按 v1.x 语义版本排序，避免旧自定义版本压过系统新版。", "发布新 SKILL 时会基于当前最大版本生成下一个版本号。"] },
   { version: "v1.8.29", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训 SKILL 深度展开", changes: ["培训 SKILL 默认版本升级到 v1.4。", "培训话题要求同时输出核心观点和详细展开，避免只生成简短提纲。", "知识体系延伸要求明确区分原文依据、模型扩展、行业案例和迁移应用。"] },
   { version: "v1.8.28", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "品牌更名为 Wistalk", changes: ["系统名称由 TalktoCEO 更名为 Wistalk。", "前端标题、侧边栏品牌、README、GitHub Pages 工作流名称同步更新。", "浏览器本地数据库和登录态 key 更名为 Wistalk，并保留旧数据迁移兼容。"] },
@@ -381,6 +382,7 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 - 识别讲师、学员对象、课程目标、知识点边界、场景案例、练习要求、操作步骤和易错点。
 - 区分：知识点/概念、老师原文解释、具体场景、操作过程、注意事项、误区纠偏、行动要求。
 - 看到列表、步骤、工具菜单、判断标准、案例、提问、提醒、注意事项时，要优先判断是否可以单独拆成一个学习话题。
+- 课程预告、目录提示、转场衔接、下一节安排、寒暄和纯时间安排，不属于知识点/概念/方法/工具/步骤/误区/场景，不能作为 topics 输出；除非原文在该段里已经讲清楚了可学习的知识内容。
 - 缺失信息统一写“未提及”，不要编造讲师、时长、对象、工具、数字和案例。
 - 对原文没有明确说出的应用建议、行业案例、知识延伸，必须标注 [扩展] 或 [推断]。
 
@@ -412,6 +414,7 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 - 对培训材料来说，topics 原则上必须输出，除非原文极短或没有教学内容。
 - 每个 topic 只解决一个细知识点、一个概念、一个方法、一个工具、一个步骤、一个误区、一个判断标准或一个典型场景。
 - 不要把 3 个以上不同知识点合并为一个 topic。
+- 不要把“下午课程预告”“接下来讲某模块”“稍后介绍某主题”这类预告句包装成 topic；这类内容可以写入 overallLogic、followUpPlan 或 topicExtractionNote，但不能进入 topics。
 - 不要把 topic 写成管理文章，也不要把普通知识点包装成 CEO 战略话题。
 - 若输出 topics，每个话题必须按培训学习框架组织：知识点/概念、讲解场景、注意问题、知识扩展、练习任务、整体逻辑和学习者收获。
 - 约 1 小时培训内容，topics 数量通常不少于 10 个；如果少于 8 个，必须在 topicExtractionNote 里解释为什么无法继续细拆。
@@ -1858,8 +1861,8 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
   return {
     ...DEFAULT_TOPIC_SKILL,
     id: isExecutive ? DEFAULT_TOPIC_SKILL.id : `topic-skill-default-${materialTypeId}`,
-    version: kind === "training" ? "v1.4" : DEFAULT_TOPIC_SKILL.version,
-    versionNumber: kind === "training" ? 5 : DEFAULT_TOPIC_SKILL.versionNumber,
+    version: kind === "training" ? "v1.5" : DEFAULT_TOPIC_SKILL.version,
+    versionNumber: kind === "training" ? 6 : DEFAULT_TOPIC_SKILL.versionNumber,
     name: skillNameForMaterialType(typeName, materialTypeId),
     summary: isExecutive
       ? DEFAULT_TOPIC_SKILL.summary
@@ -1879,7 +1882,7 @@ function topicSkillTemplateForMaterialType(materialTypeId = "type-executive-view
       : kind === "meeting"
         ? ["初始版本：建立会议基础信息、决策、行动项、议题讨论、协作态势、风险依赖和待定问题的分析标准。"]
         : kind === "training"
-          ? ["v1.4：培训话题在细颗粒拆解基础上增加核心观点、详细展开、场景展开、风险分析和知识延伸，避免只生成简短提纲。"]
+          ? ["v1.5：过滤课程预告、转场衔接和证据不足的弱话题，避免非知识点内容导致 SKILL 刷新失败。"]
         : [`初始版本：建立${typeName}材料的话题拆解 SKILL.md 基础模版。`],
     isPreset: true,
   };
@@ -4504,6 +4507,7 @@ function parseJsonFromText(content) {
 }
 
 function normalizeDeepSeekAnalysis(raw, sourceText) {
+  sanitizeDeepSeekTopics(raw);
   validateDeepSeekAnalysis(raw);
   const fallback = analyzeText(sourceText);
   const categories = Array.isArray(raw?.categories) ? raw.categories : [];
@@ -4630,6 +4634,51 @@ function normalizeDeepSeekAnalysis(raw, sourceText) {
   };
 }
 
+function topicEvidenceList(topic = {}) {
+  const nested = [
+    ...(Array.isArray(topic?.trainingTopic?.scenarios) ? topic.trainingTopic.scenarios.map((item) => item?.evidence) : []),
+    ...(Array.isArray(topic?.trainingTopic?.attentionPoints) ? topic.trainingTopic.attentionPoints.map((item) => item?.evidence) : []),
+  ];
+  return [
+    ...(Array.isArray(topic?.evidence) ? topic.evidence : []),
+    ...nested,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function sanitizeDeepSeekTopics(raw) {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.topics)) {
+    return;
+  }
+  const hasMeetingAnalysis = Boolean(raw.meetingAnalysis && typeof raw.meetingAnalysis === "object");
+  const hasTrainingAnalysis = Boolean(raw.trainingAnalysis && typeof raw.trainingAnalysis === "object");
+  if (!hasMeetingAnalysis && !hasTrainingAnalysis) {
+    return;
+  }
+  const dropped = [];
+  raw.topics = raw.topics.filter((topic) => {
+    const evidence = topicEvidenceList(topic);
+    if (evidence.length >= 2) {
+      topic.evidence = evidence.slice(0, 4);
+      return true;
+    }
+    dropped.push(topic?.title || topic?.trainingTopic?.learningQuestion || topic?.trainingTopic?.knowledgeName || "未命名话题");
+    return false;
+  });
+  if (!dropped.length) {
+    return;
+  }
+  const note = `已过滤 ${dropped.length} 个缺少足够原文依据的话题：${dropped.slice(0, 5).join("、")}。`;
+  if (hasTrainingAnalysis) {
+    raw.trainingAnalysis.topicExtractionNote = [raw.trainingAnalysis.topicExtractionNote, note].filter(Boolean).join(" ");
+  }
+  if (hasMeetingAnalysis) {
+    raw.meetingAnalysis.topicExtractionNote = [raw.meetingAnalysis.topicExtractionNote, note].filter(Boolean).join(" ");
+  }
+}
+
 function validateDeepSeekAnalysis(raw) {
   const oneLine = String(raw?.overview?.oneLine || "").trim();
   const logicLine = String(raw?.overview?.logicLine || "").trim();
@@ -4647,7 +4696,8 @@ function validateDeepSeekAnalysis(raw) {
   if (!hasMeetingAnalysis && !hasTrainingAnalysis && (!Array.isArray(raw?.topics) || raw.topics.length < 1)) {
     throw new Error("DeepSeek 没有返回可学习的话题。");
   }
-  const weakTopic = (raw.topics || []).find((topic) => !Array.isArray(topic?.evidence) || topic.evidence.length < 2);
+  const hasSoftAnalysis = hasMeetingAnalysis || hasTrainingAnalysis;
+  const weakTopic = hasSoftAnalysis ? null : (raw.topics || []).find((topic) => !Array.isArray(topic?.evidence) || topic.evidence.length < 2);
   if (weakTopic) {
     throw new Error(`DeepSeek 返回的话题缺少足够原文依据：${weakTopic.title || "未命名话题"}`);
   }
