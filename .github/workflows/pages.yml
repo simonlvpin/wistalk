@@ -1,4 +1,4 @@
-name: Deploy TalktoCEO to GitHub Pages
+name: Deploy Wistalk to GitHub Pages
 
 on:
   push:
