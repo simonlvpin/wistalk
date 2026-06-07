@@ -2529,6 +2529,11 @@ textarea {
   color: #243c3b;
 }
 
+.writing-viewpoint-chip.is-disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
 .generated-viewpoint-basis {
   display: grid;
   gap: 8px;
