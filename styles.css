@@ -951,6 +951,24 @@ input:focus-visible {
   display: block;
 }
 
+.analyzed-title-input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.analyzed-title-input:hover,
+.analyzed-title-input:focus {
+  border-color: color-mix(in srgb, var(--teal) 32%, var(--line));
+  background: #fff;
+}
+
 .analyzed-material-main small {
   margin-top: 4px;
   color: var(--muted);
