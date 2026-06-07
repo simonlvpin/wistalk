@@ -1132,7 +1132,7 @@ input:focus-visible {
 .material-card-title-row strong {
   overflow: hidden;
   color: var(--ink);
-  font-size: var(--button-font-size);
+  font-size: calc(var(--button-font-size) + 1px);
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1156,7 +1156,7 @@ input:focus-visible {
 .material-card em {
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
   line-height: 1.5;
   text-overflow: ellipsis;
@@ -1288,7 +1288,8 @@ input:focus-visible {
   gap: 8px;
   align-items: center;
   margin: 0;
-  font-size: var(--body-font-size);
+  font-size: calc(var(--title-font-size) + 2px);
+  line-height: 1.35;
 }
 
 .material-topic-header h3 span {
@@ -1311,37 +1312,34 @@ input:focus-visible {
 
 .material-skill-switch {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 12px;
-  align-items: end;
+  align-items: center;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--soft);
 }
 
-.material-skill-switch label {
-  display: grid;
-  flex: 1 1 auto;
-  gap: 5px;
-  min-width: 0;
-}
-
-.material-skill-switch label span {
+.material-skill-switch > span {
+  flex: 0 0 auto;
   color: var(--muted);
-  font-size: var(--body-font-size);
+  font-size: 11px;
   font-weight: 800;
 }
 
 .material-skill-switch small {
   flex: 0 0 auto;
+  margin-left: auto;
   color: var(--muted);
-  font-size: var(--body-font-size);
+  font-size: 11px;
   white-space: nowrap;
 }
 
 .material-skill-switch .text-input {
-  font-size: var(--body-font-size);
+  width: min(420px, 46vw);
+  min-width: 240px;
+  font-size: 12px;
 }
 
 .material-topic-nav button {
@@ -2125,7 +2123,7 @@ textarea {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
   text-align: left;
   text-overflow: ellipsis;
@@ -2794,6 +2792,36 @@ textarea {
   white-space: nowrap;
 }
 
+.topic-skill-pill,
+.generated-skill-pill {
+  margin-left: auto;
+  border-color: color-mix(in srgb, var(--teal) 38%, #d8ebe8);
+  background: color-mix(in srgb, var(--teal) 10%, #fff);
+  color: var(--teal-strong);
+  font-size: 11px;
+}
+
+.topic-skill-pill::after,
+.generated-skill-pill::after {
+  content: "  点击查看";
+  color: color-mix(in srgb, var(--teal-strong) 70%, #667085);
+  font-weight: 700;
+}
+
+.topic-card-skill-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--teal) 28%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--teal) 8%, #fff);
+  color: var(--teal-strong);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .generated-tip-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2947,7 +2975,7 @@ textarea {
   border-radius: 999px;
   background: #eef6f5;
   color: #2d6661;
-  font-size: calc(var(--button-font-size) - 2px);
+  font-size: 11px;
 }
 
 .owner-tag {
@@ -3096,6 +3124,15 @@ textarea {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 18px;
+}
+
+.topic-meta .pill,
+.source-meta .pill,
+.generated-source-tags .pill {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .pill {

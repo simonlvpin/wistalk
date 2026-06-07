@@ -118,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.47", date: "2026-06-07", updatedAt: "2026-06-07T20:35:00+08:00", title: "元信息与 SKILL 标识统一", changes: ["材料、话题、文章的编号、来源、用户、时间等元信息统一改为最小字号。", "材料和话题详情中的 SKILL 改为末尾彩色可点击标识，可直接查看并编辑保存新版本。", "材料详情的 SKILL 版本查看区改为同一行展示，并提升材料标题字号。"] },
   { version: "v1.8.46", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章阅读编辑分离", changes: ["生成文章默认进入阅读态，点击编辑后才允许修改标题、核心观点和正文。", "文章核心观点改为独立色块展示。", "行动建议和学习提示从正文中拆成正文后的两类提示卡。"] },
   { version: "v1.8.45", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章直接编辑", changes: ["生成文章页的标题、核心观点和正文改为直接展示并可原位编辑。", "文章 SKILL 弹窗支持直接修改 SKILL.md 并保存为新版本。", "保存新文章 SKILL 后，旧文章会提示可按最新 SKILL 刷新。"] },
   { version: "v1.8.44", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章正式正文展示", changes: ["生成文章页的文章 SKILL 支持点击查看完整内容。", "生成文章编辑区移除重复标题和文章框架字段。", "正文生成和展示改为正式文章段落，自动清理 Markdown 标记。"] },
@@ -1118,6 +1119,7 @@ function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
     return;
   }
   const editable = Boolean(options.editable);
+  const skillKind = options.kind || "article";
   const overlay = document.createElement("div");
   overlay.className = "skill-diff-overlay skill-content-overlay";
   const close = () => overlay.remove();
@@ -1138,7 +1140,7 @@ function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
       ${editable ? `
         <label class="skill-content-summary">
           <span>新版本说明</span>
-          <input class="text-input compact-text-input" data-skill-content-summary maxlength="80" value="从生成文章页修改文章 SKILL" />
+          <input class="text-input compact-text-input" data-skill-content-summary maxlength="80" value="${escapeHtml(skillKind === "topic" ? "从材料/话题页修改话题 SKILL" : "从生成文章页修改文章 SKILL")}" />
         </label>
         <textarea class="text-input skill-content-editor" data-skill-content-editor>${escapeHtml(skill.prompt || "")}</textarea>
         <div class="skill-content-actions">
@@ -1166,20 +1168,24 @@ function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
     editor?.addEventListener("input", syncSave);
     saveButton?.addEventListener("click", async () => {
       const prompt = editor?.value.trim() || "";
-      const summary = summaryInput?.value.trim() || "从生成文章页修改文章 SKILL";
+      const summary = summaryInput?.value.trim() || (skillKind === "topic" ? "从材料/话题页修改话题 SKILL" : "从生成文章页修改文章 SKILL");
       if (!prompt || prompt === String(skill.prompt || "").trim()) {
         return;
       }
       const diffLog = buildSkillDiffLog(skill, { summary, prompt });
       const ok = await confirmAction({
-        title: "保存文章 SKILL 新版本",
-        message: `确认将当前修改保存为新的文章 SKILL 版本吗？\n\n与当前版本差异：\n${diffLog.map((item) => `- ${item}`).join("\n")}`,
+        title: skillKind === "topic" ? "保存话题 SKILL 新版本" : "保存文章 SKILL 新版本",
+        message: `确认将当前修改保存为新的${skillKind === "topic" ? "话题" : "文章"} SKILL 版本吗？\n\n与当前版本差异：\n${diffLog.map((item) => `- ${item}`).join("\n")}`,
         confirmText: "确认保存",
       });
       if (!ok) {
         return;
       }
-      await createArticleSkillVersion(summary, prompt, diffLog);
+      if (skillKind === "topic") {
+        await createTopicSkillVersion(summary, prompt, diffLog, skillTypeId(skill) || options.targetMaterialTypeId || "type-executive-view");
+      } else {
+        await createArticleSkillVersion(summary, prompt, diffLog);
+      }
       close();
     });
     syncSave();
@@ -2579,14 +2585,15 @@ async function saveArticleSkills(skills) {
   loadArticleSkills();
 }
 
-async function createTopicSkillVersion(summary, prompt, changeLog = null) {
+async function createTopicSkillVersion(summary, prompt, changeLog = null, targetTypeIdOverride = "") {
   const summaryValue = String(summary || "").trim();
   const promptValue = String(prompt || "").trim();
   if (!summaryValue || !promptValue) {
     setSkillNotice("请填写版本说明和 SKILL 提示词。", "error");
     return;
   }
-  const targetTypeId = state.activeSkillMaterialTypeId || "type-executive-view";
+  const targetTypeId = targetTypeIdOverride || state.activeSkillMaterialTypeId || "type-executive-view";
+  state.activeSkillMaterialTypeId = targetTypeId;
   const targetType = materialTypeById(targetTypeId) || DEFAULT_MATERIAL_TYPES[0];
   const scopedSkills = state.topicSkills.filter((skill) => skillTypeId(skill) === targetTypeId);
   const previousSkill = currentTopicSkill(targetTypeId);
@@ -6548,6 +6555,36 @@ function materialSkillDisplay(doc) {
   return `${skillName} ${version}`;
 }
 
+function topicSkillForDoc(doc, version = "") {
+  if (!doc) {
+    return DEFAULT_TOPIC_SKILL;
+  }
+  const typeId = materialTypeIdForDoc(doc) || doc.analysis?.targetMaterialTypeId || "type-executive-view";
+  const skillVersion = version || doc.currentSkillVersion || doc.analysis?.skillVersion || DEFAULT_TOPIC_SKILL.version;
+  return skillByVersion(skillVersion, typeId) || currentTopicSkill(typeId);
+}
+
+function topicSkillPillHtml(doc, version = "", label = "最后 SKILL") {
+  const skill = topicSkillForDoc(doc, version);
+  const typeId = materialTypeIdForDoc(doc) || doc?.analysis?.targetMaterialTypeId || "type-executive-view";
+  return `<button class="pill skill-pill-button topic-skill-pill" type="button" data-open-topic-skill="${escapeHtml(skill.version || version || "")}" data-topic-skill-type="${escapeHtml(typeId)}">${escapeHtml(label)}：${escapeHtml(skill.skillFileName || skill.name || "话题拆解 SKILL.md")} ${escapeHtml(skill.version || "未记录")}</button>`;
+}
+
+function bindTopicSkillPills(root) {
+  root?.querySelectorAll("[data-open-topic-skill]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const typeId = button.dataset.topicSkillType || "type-executive-view";
+      const skill = skillByVersion(button.dataset.openTopicSkill || "", typeId) || currentTopicSkill(typeId);
+      showSkillContentModal(skill, `${skill.skillFileName || skill.name || "话题拆解 SKILL.md"} ${skill.version || ""}`.trim(), {
+        editable: true,
+        kind: "topic",
+        targetMaterialTypeId: typeId,
+      });
+    });
+  });
+}
+
 function skillShortDisplay(skill) {
   if (!skill) {
     return "最新版本";
@@ -6722,17 +6759,15 @@ function renderMaterialOverviewPage() {
             <span class="pill">资料来源：${escapeHtml(materialSourceNameForDoc(activeDoc))}</span>
             <span class="pill">材料类型：${escapeHtml(materialTypeNameForDoc(activeDoc))}</span>
             <span class="pill">最后更新：${escapeHtml(formatDate(activeDoc.lastStudiedAt || activeDoc.updatedAt || activeDoc.createdAt))}</span>
-            <span class="pill">最后 SKILL：${escapeHtml(materialSkillDisplay(activeDoc))}</span>
             <span class="pill">${activeDoc.favorite ? "已收藏材料" : "未收藏材料"}</span>
             ${isAdmin() && activeDoc.ownerEmail ? `<span class="pill">用户：${escapeHtml(activeDoc.ownerEmail)}</span>` : ""}
+            ${topicSkillPillHtml(activeDoc, activeSkillVersion)}
           </div>
           <div class="material-skill-switch">
-            <label>
-              <span>查看 SKILL 版本</span>
-              <select class="text-input" id="materialSkillVersionSelect">
-                ${skillVersions.map((item) => `<option value="${escapeHtml(item.version)}" ${item.version === activeSkillVersion ? "selected" : ""}>${escapeHtml(item.version)} · ${escapeHtml(item.skill?.skillFileName || item.skill?.name || "话题拆解 SKILL.md")}</option>`).join("")}
-              </select>
-            </label>
+            <span>查看 SKILL 版本</span>
+            <select class="text-input" id="materialSkillVersionSelect">
+              ${skillVersions.map((item) => `<option value="${escapeHtml(item.version)}" ${item.version === activeSkillVersion ? "selected" : ""}>${escapeHtml(item.version)} · ${escapeHtml(item.skill?.skillFileName || item.skill?.name || "话题拆解 SKILL.md")}</option>`).join("")}
+            </select>
             <small>${activeSkillMeta ? `应用时间：${escapeHtml(formatDate(activeSkillMeta.appliedAt))}` : ""}</small>
           </div>
           <div class="topic-detail-tabs-row material-detail-tabs-row">
@@ -6858,6 +6893,7 @@ function renderMaterialOverviewPage() {
       showSkillDiffModal(button.dataset.skillDiff);
     });
   });
+  bindTopicSkillPills(els.materialOverviewPage);
   els.materialOverviewPage.querySelector("#materialSkillVersionSelect")?.addEventListener("change", (event) => {
     state.activeMaterialSkillVersion = event.target.value;
     state.activeMaterialTopicIndex = 0;
@@ -7010,7 +7046,7 @@ function renderTopicHome() {
           ${isAdmin() && row.ownerEmail ? `<span class="topic-tag owner-tag">${highlightSearchTerm(row.ownerEmail, state.topicSearch)}</span>` : ""}
         </div>
         <div class="topic-home-skill" title="分析 SKILL：${escapeHtml(row.skillDisplay)}">
-          <span>分析 SKILL：</span>${highlightSearchTerm(row.skillDisplay, state.topicSearch)}
+          <span class="topic-card-skill-pill">分析 SKILL：${highlightSearchTerm(row.skillDisplay, state.topicSearch)}</span>
         </div>
         <button class="topic-home-source" type="button" data-topic-source="${escapeHtml(row.id)}" title="话题来源：${escapeHtml(row.source)} · ${escapeHtml(row.docTitle)}">
           <span>话题来源：</span>${highlightSearchTerm(`${row.source} · ${row.docTitle}`, state.topicSearch)}
@@ -7097,6 +7133,7 @@ function renderTopicHomeArticle(row) {
   });
   bindMindMapInteractions(els.topicHomeArticle, () => renderTopicHomeArticle(row), row.topic, row);
   bindTopicWritingControls(els.topicHomeArticle, row, () => renderTopicHomeArticle(row));
+  bindTopicSkillPills(els.topicHomeArticle);
   els.topicHomeArticle.querySelectorAll("[data-original-keyword]").forEach((button) => {
     button.addEventListener("click", () => {
       const keyword = button.dataset.originalKeyword;
@@ -7239,6 +7276,7 @@ function buildTopicSourceHtml(row, options = {}) {
         <span class="pill">资料来源：${escapeHtml(row.source)}</span>
         <span class="pill">资料类型：${escapeHtml(row.type)}</span>
         <span class="pill">最后更新：${escapeHtml(formatDate(row.updatedAt))}</span>
+        ${row.doc ? topicSkillPillHtml(row.doc, row.doc.currentSkillVersion || row.doc.analysis?.skillVersion || "", "话题 SKILL") : ""}
       </div>
       <div class="topic-original-body">${body}</div>
       ${options.includeTopicPanel ? `<div class="topic-original-topic-panel">${buildTopicArticleHtml(row.topic, row)}</div>` : ""}
@@ -7267,6 +7305,7 @@ function buildMaterialOriginalHtml(doc) {
         <span class="pill">资料来源：${escapeHtml(materialSourceNameForDoc(doc))}</span>
         <span class="pill">材料类型：${escapeHtml(materialTypeNameForDoc(doc))}</span>
         <span class="pill">最后更新：${escapeHtml(formatDate(doc.lastStudiedAt || doc.updatedAt || doc.createdAt))}</span>
+        ${topicSkillPillHtml(doc, doc.currentSkillVersion || doc.analysis?.skillVersion || "", "最后 SKILL")}
       </div>
       <div class="topic-original-body">${body}</div>
     </section>
@@ -8504,6 +8543,7 @@ function renderTopicArticle(topic) {
     return;
   }
   els.topicArticle.innerHTML = buildTopicArticleHtml(topic);
+  bindTopicSkillPills(els.topicArticle);
 }
 
 function buildTopicArticleHtml(topic, row = null) {
@@ -8537,6 +8577,7 @@ function buildTopicArticleHtml(topic, row = null) {
         <span class="pill">话题编号：${escapeHtml(row.displayIndex)}</span>
         <span class="pill">话题来源：${escapeHtml(row.source)} · ${escapeHtml(row.docTitle)}</span>
         <span class="pill">最后更新：${escapeHtml(formatDate(row.updatedAt))}</span>
+        ${row.doc ? topicSkillPillHtml(row.doc, row.doc.currentSkillVersion || row.doc.analysis?.skillVersion || "", "话题 SKILL") : ""}
       </div>
     `
     : "";
@@ -8575,6 +8616,7 @@ function buildTrainingTopicArticleHtml(topic, row = null) {
         <span class="pill">话题编号：${escapeHtml(row.displayIndex)}</span>
         <span class="pill">话题来源：${escapeHtml(row.source)} · ${escapeHtml(row.docTitle)}</span>
         <span class="pill">最后更新：${escapeHtml(formatDate(row.updatedAt))}</span>
+        ${row.doc ? topicSkillPillHtml(row.doc, row.doc.currentSkillVersion || row.doc.analysis?.skillVersion || "", "话题 SKILL") : ""}
       </div>
     `
     : "";
