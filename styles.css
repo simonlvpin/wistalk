@@ -2561,6 +2561,46 @@ textarea {
   color: #344b4a;
 }
 
+.article-generation-progress {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #cfe2e4;
+  border-radius: 8px;
+  background: #f6fbfb;
+}
+
+.article-generation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #243d42;
+}
+
+.article-generation-progress p {
+  margin: 0;
+  color: #506373;
+  line-height: 1.6;
+}
+
+.article-generation-log {
+  display: grid;
+  gap: 5px;
+  max-height: 132px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff;
+  color: #526677;
+  font-size: var(--body-font-size);
+}
+
+.article-generation-log span {
+  line-height: 1.55;
+}
+
 .generated-article-shell {
   display: grid;
   grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
