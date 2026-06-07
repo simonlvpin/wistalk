@@ -36,6 +36,9 @@
   topicPageSize: 20,
   activeTopicRef: null,
   activeTopicPane: "analysis",
+  mindMapSelectedNodeId: "",
+  mindMapCollapsedNodeIds: [],
+  mindMapZoom: 1,
   activeOriginalKeyword: "",
   activeMaterialPane: "source",
   materialSearchComposing: false,
@@ -92,6 +95,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.32", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图页面", changes: ["话题详情新增知识脑图标签页。", "脑图节点支持点击查看对应内容，并支持节点收起、展开和缩放。", "知识脑图支持导出为图片，也可打开打印流程导出为 PDF。"] },
   { version: "v1.8.31", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训弱话题容错", changes: ["培训和会议分析遇到证据不足的话题时自动过滤，不再让整份材料刷新失败。", "培训 SKILL 默认版本升级到 v1.5，禁止把课程预告、转场和下一节安排强行生成知识点话题。", "被过滤的话题会写入 topicExtractionNote，便于回看模型输出问题。"] },
   { version: "v1.8.30", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "SKILL 版本去重修复", changes: ["话题 SKILL 版本列表按资料类型和版本号去重。", "最新版判断改为按 v1.x 语义版本排序，避免旧自定义版本压过系统新版。", "发布新 SKILL 时会基于当前最大版本生成下一个版本号。"] },
   { version: "v1.8.29", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训 SKILL 深度展开", changes: ["培训 SKILL 默认版本升级到 v1.4。", "培训话题要求同时输出核心观点和详细展开，避免只生成简短提纲。", "知识体系延伸要求明确区分原文依据、模型扩展、行业案例和迁移应用。"] },
@@ -5751,10 +5755,10 @@ function renderMaterialOverviewPage() {
   const isMeetingNotes = activeDoc ? activeMaterialTypeKind === "meeting" || Boolean(activeAnalysis?.meetingAnalysis) : false;
   const isTrainingSpeech = activeDoc ? activeMaterialTypeKind === "training" || Boolean(activeAnalysis?.trainingAnalysis) : false;
   const activeMaterialPane = isMeetingNotes
-    ? (["meeting", "source", "topics"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
+    ? (["meeting", "source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
     : isTrainingSpeech
-      ? (["training", "source", "topics"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
-      : (state.activeMaterialPane === "topics" ? "topics" : "source");
+      ? (["training", "source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
+      : (["topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "source");
   const activeTopic = activeDoc ? topics[state.activeMaterialTopicIndex] : null;
   const activeDocForTopic = activeDoc && activeAnalysis ? { ...activeDoc, analysis: activeAnalysis } : activeDoc;
   const row = activeDocForTopic && activeTopic ? materialTopicRow(activeDocForTopic, activeTopic, state.activeMaterialTopicIndex) : null;
@@ -5851,9 +5855,14 @@ function renderMaterialOverviewPage() {
               ${isTrainingSpeech ? `<button class="topic-detail-tab${activeMaterialPane === "training" ? " is-active" : ""}" type="button" data-material-pane="training">培训分析</button>` : ""}
               <button class="topic-detail-tab${activeMaterialPane === "source" ? " is-active" : ""}" type="button" data-material-pane="source">资料原文</button>
               <button class="topic-detail-tab${activeMaterialPane === "topics" ? " is-active" : ""}" type="button" data-material-pane="topics">话题内容</button>
+              ${row ? `<button class="topic-detail-tab${activeMaterialPane === "mindmap" ? " is-active" : ""}" type="button" data-material-pane="mindmap">知识脑图</button>` : ""}
             </div>
           </div>
-          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis, activeDoc, activeSkillVersion) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : `
+          ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis, activeDoc, activeSkillVersion) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : activeMaterialPane === "mindmap" ? `
+            <article class="topic-article material-topic-article">
+              ${row ? buildMindMapHtml(activeTopic, row) : `<p class="empty-state compact">这份材料没有可展示的知识脑图。</p>`}
+            </article>
+          ` : `
             <div class="material-topic-nav">
               ${topics.map((topic, index) => `
                 <button class="${index === state.activeMaterialTopicIndex ? "is-active" : ""}" type="button" data-material-topic="${index}">
@@ -5938,6 +5947,8 @@ function renderMaterialOverviewPage() {
       state.activeMaterialDocId = button.dataset.materialCard;
       state.activeMaterialTopicIndex = 0;
       state.activeMaterialSkillVersion = "";
+      state.mindMapSelectedNodeId = "";
+      state.mindMapCollapsedNodeIds = [];
       const selectedDoc = docs.find((doc) => doc.id === button.dataset.materialCard);
       const selectedTypeKind = selectedDoc ? materialTypeKind(materialTypeIdForDoc(selectedDoc), materialTypeNameForDoc(selectedDoc)) : "";
       state.activeMaterialPane = selectedDoc && (selectedTypeKind === "meeting" || selectedDoc.analysis?.meetingAnalysis)
@@ -5964,6 +5975,8 @@ function renderMaterialOverviewPage() {
   els.materialOverviewPage.querySelector("#materialSkillVersionSelect")?.addEventListener("change", (event) => {
     state.activeMaterialSkillVersion = event.target.value;
     state.activeMaterialTopicIndex = 0;
+    state.mindMapSelectedNodeId = "";
+    state.mindMapCollapsedNodeIds = [];
     const selectedDoc = docs.find((doc) => doc.id === state.activeMaterialDocId);
     const selectedAnalysis = selectedDoc ? docAnalysisForSkill(selectedDoc, state.activeMaterialSkillVersion) : null;
     const selectedTypeKind = selectedDoc ? materialTypeKind(materialTypeIdForDoc(selectedDoc), materialTypeNameForDoc(selectedDoc)) : "";
@@ -5980,6 +5993,10 @@ function renderMaterialOverviewPage() {
       if (button.dataset.materialPane === "source" && !state.activeOriginalKeyword) {
         state.activeOriginalKeyword = state.materialListSearch.trim();
       }
+      if (button.dataset.materialPane === "mindmap") {
+        state.mindMapSelectedNodeId = "";
+        state.mindMapCollapsedNodeIds = [];
+      }
       renderMaterialOverviewPage();
     });
   });
@@ -5987,9 +6004,12 @@ function renderMaterialOverviewPage() {
     button.addEventListener("click", () => {
       state.activeMaterialTopicIndex = Number(button.dataset.materialTopic || 0);
       state.activeMaterialPane = "topics";
+      state.mindMapSelectedNodeId = "";
+      state.mindMapCollapsedNodeIds = [];
       renderMaterialOverviewPage();
     });
   });
+  bindMindMapInteractions(els.materialOverviewPage, () => renderMaterialOverviewPage());
   els.materialOverviewPage.querySelectorAll("[data-rich-command]").forEach((button) => {
     button.addEventListener("click", () => {
       const editor = els.materialOverviewPage.querySelector("[data-training-note-editor]");
@@ -6143,6 +6163,8 @@ function renderTopicHome() {
 function selectTopicHomeRow(rowId, pane = "analysis") {
   state.activeTopicRef = rowId;
   state.activeTopicPane = pane;
+  state.mindMapSelectedNodeId = "";
+  state.mindMapCollapsedNodeIds = [];
   renderTopicHome();
 }
 
@@ -6154,25 +6176,28 @@ function renderTopicHomeArticle(row) {
     els.topicHomeArticle.innerHTML = `<p class="empty-state">还没有可学习的话题。点击顶部“材料上传分析”先上传材料。</p>`;
     return;
   }
-  const activePane = state.activeTopicPane === "analysis" ? "analysis" : "source";
+  const activePane = ["analysis", "source", "mindmap"].includes(state.activeTopicPane) ? state.activeTopicPane : "analysis";
   els.topicHomeArticle.innerHTML = `
     <div class="topic-detail-tabs-row">
       <div class="topic-detail-tabs" role="tablist" aria-label="话题学习内容">
         <button class="topic-detail-tab${activePane === "source" ? " is-active" : ""}" type="button" data-topic-pane="source">资料原文</button>
         <button class="topic-detail-tab${activePane === "analysis" ? " is-active" : ""}" type="button" data-topic-pane="analysis">话题解析</button>
+        <button class="topic-detail-tab${activePane === "mindmap" ? " is-active" : ""}" type="button" data-topic-pane="mindmap">知识脑图</button>
       </div>
     </div>
     <div class="topic-detail-pane">
-      ${activePane === "source" ? buildTopicSourceHtml(row, { includeTopicPanel: false }) : buildTopicArticleHtml(row.topic, row)}
+      ${activePane === "source" ? buildTopicSourceHtml(row, { includeTopicPanel: false }) : activePane === "mindmap" ? buildMindMapHtml(row.topic, row) : buildTopicArticleHtml(row.topic, row)}
     </div>
   `;
   els.topicHomeArticle.querySelectorAll("[data-topic-pane]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeTopicPane = button.dataset.topicPane;
       state.activeOriginalKeyword = "";
+      state.mindMapSelectedNodeId = "";
       renderTopicHomeArticle(row);
     });
   });
+  bindMindMapInteractions(els.topicHomeArticle, () => renderTopicHomeArticle(row));
   els.topicHomeArticle.querySelectorAll("[data-original-keyword]").forEach((button) => {
     button.addEventListener("click", () => {
       const keyword = button.dataset.originalKeyword;
@@ -6243,6 +6268,339 @@ function buildMaterialOriginalHtml(doc) {
       <div class="topic-original-body">${body}</div>
     </section>
   `;
+}
+
+function compactText(value, fallback = "未提及") {
+  if (Array.isArray(value)) {
+    return value.map((item) => compactText(item, "")).filter(Boolean).join("；") || fallback;
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, item]) => `${key}：${compactText(item, "")}`)
+      .filter(Boolean)
+      .join("；") || fallback;
+  }
+  return String(value || "").trim() || fallback;
+}
+
+function createMindNode(id, title, content, children = []) {
+  return {
+    id,
+    title: String(title || "未命名节点"),
+    content: compactText(content),
+    children: children.filter(Boolean),
+  };
+}
+
+function buildTrainingMindMap(topic) {
+  const trainingTopic = normalizeTrainingTopic(topic.trainingTopic || topic) || {};
+  return createMindNode("root", topic.title || trainingTopic.learningQuestion || trainingTopic.knowledgeName || "培训话题", trainingTopic.coreViewpoint || trainingTopic.detailedExplanation || topic.sourceSummary, [
+    createMindNode("knowledge", "知识点/概念", [
+      `知识点名称：${trainingTopic.knowledgeName || topic.title || "未提及"}`,
+      `知识点类型：${trainingTopic.knowledgeType || "知识点"}`,
+      `学习问题：${trainingTopic.learningQuestion || topic.title || "未提及"}`,
+      `核心观点：${trainingTopic.coreViewpoint || "未提及"}`,
+      `老师怎么讲：${trainingTopic.teacherExplanation || "未提及"}`,
+      `详细展开：${trainingTopic.detailedExplanation || trainingTopic.teacherExplanation || "未提及"}`,
+    ]),
+    createMindNode("scenarios", "讲解场景", "老师在培训中使用的具体场景。", (trainingTopic.scenarios || []).map((scenario, index) => createMindNode(`scenario-${index}`, scenario.name || `讲解场景${index + 1}`, [
+      `场景语境：${scenario.context || "未提及"}`,
+      `老师怎么讲：${scenario.teacherExplanation || "未提及"}`,
+      `场景展开：${scenario.detailedExpansion || scenario.teacherExplanation || "未提及"}`,
+      `适用条件：${scenario.applicability || "未提及"}`,
+      `原文依据：${scenario.evidence || "未提及"}`,
+    ]))),
+    createMindNode("attention", "注意问题", "学习和应用时需要避开的误区、风险和边界。", (trainingTopic.attentionPoints || []).map((point, index) => createMindNode(`attention-${index}`, point.issue || `注意问题${index + 1}`, [
+      `为什么要注意：${point.whyItMatters || "未提及"}`,
+      `详细分析：${point.detailedAnalysis || point.whyItMatters || "未提及"}`,
+      `纠偏方式：${point.correction || "未提及"}`,
+      `原文依据：${point.evidence || "未提及"}`,
+    ]))),
+    createMindNode("extensions", "知识体系延伸", "基于原文知识点继续向行业案例、关联知识和迁移场景展开。", (trainingTopic.extensions || []).map((extension, index) => createMindNode(`extension-${index}`, extension.title || `知识延伸${index + 1}`, [
+      `行业案例：${extension.industryCase || "未提及"}`,
+      `扩展说明：${extension.detailedExpansion || extension.industryCase || "未提及"}`,
+      `关联知识：${extension.relatedKnowledge || "未提及"}`,
+      `迁移场景：${extension.transferScenario || "未提及"}`,
+      `学习建议：${extension.learningSuggestion || "未提及"}`,
+    ]))),
+    createMindNode("practice", "练习任务", [
+      `任务：${trainingTopic.practice?.task || "未提及"}`,
+      `操作步骤：${compactText(trainingTopic.practice?.steps)}`,
+      `检验标准：${compactText(trainingTopic.practice?.checkpoints)}`,
+    ]),
+    createMindNode("logic", "整体逻辑与收获", [
+      `整体逻辑：${trainingTopic.logicSummary || "未提及"}`,
+      `学习者收获：${trainingTopic.learnerTakeaway || "未提及"}`,
+    ]),
+  ]);
+}
+
+function buildStandardMindMap(topic) {
+  const fallbackCategory = topic.category || categoryDefs.find((item) => item.name === topic.categoryName) || categoryDefs[0];
+  const evidence = Array.isArray(topic.evidence) ? topic.evidence : [];
+  const deepNature = Array.isArray(topic.deepNature) && topic.deepNature.length ? topic.deepNature : buildDeepNature(fallbackCategory, evidence);
+  const ceoSolution = topic.ceoSolution && Object.keys(topic.ceoSolution).length ? topic.ceoSolution : buildCeoSolution(evidence, fallbackCategory);
+  const theoryAnchors = topic.theoryAnchors && Object.keys(topic.theoryAnchors).length ? topic.theoryAnchors : buildTheoryAnchors(fallbackCategory, evidence);
+  const caseComparison = topic.caseComparison && Object.keys(topic.caseComparison).length ? topic.caseComparison : buildCaseComparison(fallbackCategory);
+  const moreSolutions = Array.isArray(topic.moreSolutions) && topic.moreSolutions.length ? topic.moreSolutions : buildMoreSolutions(fallbackCategory);
+  const transferableInsights = topic.transferableInsights && Object.keys(topic.transferableInsights).length ? topic.transferableInsights : buildTransferableInsights(fallbackCategory, evidence);
+  return createMindNode("root", topic.title || "话题文章", topic.problemEssence || topic.essence || topic.sourceSummary, [
+    createMindNode("source", "话题来源", [topic.sourceSummary || buildTopicSourceSummary(evidence, fallbackCategory), ...evidence]),
+    createMindNode("essence", "问题实质", topic.problemEssence || topic.essence || fallbackCategory.essence),
+    createMindNode("surface", "表面现象", topic.surfacePhenomenon || buildSurfacePhenomenon(evidence, fallbackCategory)),
+    createMindNode("deep", "深层本质", "从不同维度解释问题为什么成立。", deepNature.map((item, index) => createMindNode(`deep-${index}`, item.title || `维度${index + 1}`, [item.explanation, item.case]))),
+    createMindNode("solution", "CEO 解法与关键动作", "把判断落到动作、验证和持续改进。", [
+      createMindNode("solution-core", "核心判断", ceoSolution.coreJudgment),
+      createMindNode("solution-verify", "验证方法", ceoSolution.verificationMethods),
+      createMindNode("solution-action", "关键行动", ceoSolution.keyActions),
+    ]),
+    createMindNode("theory", "底层逻辑", "关联理论模型和逻辑拆解。", [
+      createMindNode("theory-model", "关联理论/模型", theoryAnchors.linkedTheoryModel),
+      createMindNode("theory-logic", "逻辑拆解", theoryAnchors.logicDissection),
+    ]),
+    createMindNode("case", "案例对照", [
+      `反例：${caseComparison.counterexample || "未提及"}`,
+      `正例：${caseComparison.positiveExample || "未提及"}`,
+      `历史类比：${caseComparison.historicalAnalogy || "未提及"}`,
+    ]),
+    createMindNode("more", "更多解法与选择", "可以替换或补充的实践路径。", moreSolutions.map((solution, index) => createMindNode(`more-${index}`, solution.title || `解法${index + 1}`, [
+      `步骤：${compactText(solution.steps)}`,
+      `适用场景：${solution.applicability || "未提及"}`,
+    ]))),
+    createMindNode("insight", "可迁移启示", [
+      `对团队的启示：${transferableInsights.team || "未提及"}`,
+      `对读者的行动建议：${transferableInsights.reader || "未提及"}`,
+    ]),
+  ]);
+}
+
+function buildMindMapData(topic, row = null) {
+  const rowTypeKind = row?.doc ? materialTypeKind(materialTypeIdForDoc(row.doc), materialTypeNameForDoc(row.doc)) : "";
+  return rowTypeKind === "training" || topic?.trainingTopic
+    ? buildTrainingMindMap(topic)
+    : buildStandardMindMap(topic);
+}
+
+function flattenMindMapNodes(root) {
+  const nodes = [];
+  const visit = (node) => {
+    nodes.push(node);
+    (node.children || []).forEach(visit);
+  };
+  visit(root);
+  return nodes;
+}
+
+function layoutMindMap(root) {
+  const collapsed = new Set(state.mindMapCollapsedNodeIds || []);
+  const nodes = [];
+  const edges = [];
+  const nodeWidth = 220;
+  const nodeHeight = 58;
+  const depthGap = 280;
+  const rowGap = 92;
+  let leafIndex = 0;
+  let maxDepth = 0;
+  const place = (node, depth, parent = null) => {
+    maxDepth = Math.max(maxDepth, depth);
+    const children = collapsed.has(node.id) ? [] : (node.children || []);
+    const positionedChildren = children.map((child) => place(child, depth + 1, node));
+    const y = positionedChildren.length
+      ? positionedChildren.reduce((sum, child) => sum + child.y, 0) / positionedChildren.length
+      : 60 + (leafIndex++ * rowGap);
+    const positioned = {
+      ...node,
+      x: 34 + (depth * depthGap),
+      y,
+      width: nodeWidth,
+      height: nodeHeight,
+      depth,
+      hasChildren: Boolean((node.children || []).length),
+      collapsed: collapsed.has(node.id),
+    };
+    nodes.push(positioned);
+    if (parent) {
+      edges.push({ from: parent.id, to: node.id });
+    }
+    return positioned;
+  };
+  place(root, 0);
+  const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
+  return {
+    nodes,
+    edges: edges.map((edge) => ({ from: nodeById[edge.from], to: nodeById[edge.to] })).filter((edge) => edge.from && edge.to),
+    width: Math.max(860, 80 + ((maxDepth + 1) * depthGap) + nodeWidth),
+    height: Math.max(320, 120 + Math.max(1, leafIndex) * rowGap),
+  };
+}
+
+function svgTextLines(text, maxChars = 11, maxLines = 2) {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  const lines = [];
+  for (let index = 0; index < source.length && lines.length < maxLines; index += maxChars) {
+    lines.push(source.slice(index, index + maxChars));
+  }
+  if (source.length > maxChars * maxLines && lines.length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, Math.max(1, maxChars - 1))}...`;
+  }
+  return lines.length ? lines : ["未命名"];
+}
+
+function buildMindMapSvg(layout, selectedId) {
+  const nodeHtml = layout.nodes.map((node) => {
+    const selected = node.id === selectedId;
+    const fill = node.depth === 0 ? "#2f8f8a" : selected ? "#fff7e8" : "#ffffff";
+    const stroke = selected ? "#d58a24" : node.depth === 0 ? "#2f8f8a" : "#cbd7df";
+    const textColor = node.depth === 0 ? "#ffffff" : "#223142";
+    const lines = svgTextLines(node.title).map((line, index) => `<tspan x="${node.x + 16}" y="${node.y + 23 + index * 18}">${escapeHtml(line)}</tspan>`).join("");
+    return `
+      <g class="mind-map-node${selected ? " is-selected" : ""}" data-mind-node="${escapeHtml(node.id)}" role="button" tabindex="0">
+        <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 2 : 1.3}"></rect>
+        <text fill="${textColor}" font-size="14" font-weight="700">${lines}</text>
+        ${node.hasChildren ? `
+          <g class="mind-map-collapse" data-mind-collapse="${escapeHtml(node.id)}">
+            <circle cx="${node.x + node.width - 17}" cy="${node.y + 17}" r="10" fill="${node.collapsed ? "#f2f6f8" : "#e8f4f3"}" stroke="${stroke}"></circle>
+            <text x="${node.x + node.width - 17}" y="${node.y + 22}" text-anchor="middle" fill="#233142" font-size="15" font-weight="800">${node.collapsed ? "+" : "-"}</text>
+          </g>
+        ` : ""}
+      </g>
+    `;
+  }).join("");
+  const edgeHtml = layout.edges.map((edge) => {
+    const startX = edge.from.x + edge.from.width;
+    const startY = edge.from.y + edge.from.height / 2;
+    const endX = edge.to.x;
+    const endY = edge.to.y + edge.to.height / 2;
+    const midX = (startX + endX) / 2;
+    return `<path d="M${startX} ${startY} C${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}" fill="none" stroke="#9fb4bf" stroke-width="1.6"></path>`;
+  }).join("");
+  return `<svg class="knowledge-map-svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="知识脑图">${edgeHtml}${nodeHtml}</svg>`;
+}
+
+function buildMindMapHtml(topic, row = null) {
+  const root = buildMindMapData(topic, row);
+  const allNodes = flattenMindMapNodes(root);
+  const selectedId = allNodes.some((node) => node.id === state.mindMapSelectedNodeId) ? state.mindMapSelectedNodeId : root.id;
+  const selected = allNodes.find((node) => node.id === selectedId) || root;
+  const layout = layoutMindMap(root);
+  const zoom = Math.max(0.6, Math.min(1.8, Number(state.mindMapZoom || 1)));
+  return `
+    <section class="knowledge-map" data-mind-map>
+      <div class="knowledge-map-toolbar">
+        <div>
+          <p class="section-kicker">Knowledge Map</p>
+          <h3>${escapeHtml(root.title)}</h3>
+        </div>
+        <div class="knowledge-map-actions">
+          <button class="mini-button" type="button" data-mind-zoom="out">缩小</button>
+          <span>${escapeHtml(String(Math.round(zoom * 100)))}%</span>
+          <button class="mini-button" type="button" data-mind-zoom="in">放大</button>
+          <button class="mini-button" type="button" data-mind-reset>重置</button>
+          <button class="mini-button" type="button" data-mind-export="png">导出图片</button>
+          <button class="mini-button" type="button" data-mind-export="pdf">导出 PDF</button>
+        </div>
+      </div>
+      <div class="knowledge-map-layout">
+        <div class="knowledge-map-canvas" data-mind-canvas style="--mind-map-zoom:${zoom};">
+          ${buildMindMapSvg(layout, selectedId)}
+        </div>
+        <aside class="knowledge-map-detail">
+          <p class="section-kicker">节点内容</p>
+          <h4>${escapeHtml(selected.title)}</h4>
+          <p>${escapeHtml(selected.content || "暂无节点内容。")}</p>
+          ${(selected.children || []).length ? `<div class="knowledge-map-child-list"><strong>子节点</strong>${selected.children.map((child) => `<button type="button" data-mind-node="${escapeHtml(child.id)}">${escapeHtml(child.title)}</button>`).join("")}</div>` : ""}
+        </aside>
+      </div>
+    </section>
+  `;
+}
+
+function bindMindMapInteractions(rootEl, rerender) {
+  rootEl.querySelectorAll("[data-mind-node]").forEach((node) => {
+    node.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.mindMapSelectedNodeId = node.dataset.mindNode;
+      rerender();
+    });
+  });
+  rootEl.querySelectorAll("[data-mind-collapse]").forEach((node) => {
+    node.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const collapsed = new Set(state.mindMapCollapsedNodeIds || []);
+      if (collapsed.has(node.dataset.mindCollapse)) {
+        collapsed.delete(node.dataset.mindCollapse);
+      } else {
+        collapsed.add(node.dataset.mindCollapse);
+      }
+      state.mindMapCollapsedNodeIds = [...collapsed];
+      state.mindMapSelectedNodeId = node.dataset.mindCollapse;
+      rerender();
+    });
+  });
+  rootEl.querySelectorAll("[data-mind-zoom]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const next = Number(state.mindMapZoom || 1) + (button.dataset.mindZoom === "in" ? 0.15 : -0.15);
+      state.mindMapZoom = Math.max(0.6, Math.min(1.8, Number(next.toFixed(2))));
+      rerender();
+    });
+  });
+  rootEl.querySelector("[data-mind-reset]")?.addEventListener("click", () => {
+    state.mindMapZoom = 1;
+    state.mindMapCollapsedNodeIds = [];
+    state.mindMapSelectedNodeId = "";
+    rerender();
+  });
+  rootEl.querySelectorAll("[data-mind-export]").forEach((button) => {
+    button.addEventListener("click", () => exportMindMap(rootEl.querySelector("[data-mind-map]"), button.dataset.mindExport));
+  });
+}
+
+function exportMindMap(mapEl, format = "png") {
+  const svg = mapEl?.querySelector(".knowledge-map-svg");
+  if (!svg) {
+    return;
+  }
+  const clone = svg.cloneNode(true);
+  const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  background.setAttribute("x", "0");
+  background.setAttribute("y", "0");
+  background.setAttribute("width", clone.getAttribute("width") || "1200");
+  background.setAttribute("height", clone.getAttribute("height") || "800");
+  background.setAttribute("fill", "#ffffff");
+  clone.insertBefore(background, clone.firstChild);
+  const svgText = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const image = new Image();
+  image.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || Number(clone.getAttribute("width")) || 1200;
+    canvas.height = image.naturalHeight || Number(clone.getAttribute("height")) || 800;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0);
+    URL.revokeObjectURL(url);
+    const pngUrl = canvas.toDataURL("image/png");
+    if (format === "pdf") {
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) {
+        return;
+      }
+      printWindow.document.write(`<!doctype html><html><head><title>知识脑图 PDF</title><style>body{margin:0;padding:24px;background:#fff;}img{width:100%;height:auto;}@page{size:landscape;margin:12mm;}</style></head><body><img src="${pngUrl}" alt="知识脑图" /></body></html>`);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = pngUrl;
+    link.download = "knowledge-map.png";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+  image.src = url;
 }
 
 function buildMeetingAnalysisHtml(meetingAnalysis) {
