@@ -118,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.49", date: "2026-06-07", updatedAt: "2026-06-07T20:55:00+08:00", title: "系统配色重设计", changes: ["重新设计 11 组系统配色，整体改为更现代、更清爽的产品化色彩。", "去掉偏暖黄、土色和脏灰的搭配，改用蓝、青、紫、玫红等更耐看的冷调与高亮色。", "保留原有主题 id，用户已选择的配色不会丢失，只会自动换成新版视觉。"] },
   { version: "v1.8.48", date: "2026-06-07", updatedAt: "2026-06-07T20:45:00+08:00", title: "材料管理标题可编辑", changes: ["材料管理列表新增材料名称输入框，支持直接修改已分析材料标题。", "标题、资料来源、材料类型任一变化时，单行更新按钮才会启用。", "保存材料标题后，材料列表、话题来源和生成文章来源会使用新的材料名称。"] },
   { version: "v1.8.47", date: "2026-06-07", updatedAt: "2026-06-07T20:35:00+08:00", title: "元信息与 SKILL 标识统一", changes: ["材料、话题、文章的编号、来源、用户、时间等元信息统一改为最小字号。", "材料和话题详情中的 SKILL 改为末尾彩色可点击标识，可直接查看并编辑保存新版本。", "材料详情的 SKILL 版本查看区改为同一行展示，并提升材料标题字号。"] },
   { version: "v1.8.46", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章阅读编辑分离", changes: ["生成文章默认进入阅读态，点击编辑后才允许修改标题、核心观点和正文。", "文章核心观点改为独立色块展示。", "行动建议和学习提示从正文中拆成正文后的两类提示卡。"] },
@@ -563,17 +564,17 @@ const DEFAULT_ARTICLE_SKILL = {
   isPreset: true,
 };
 const THEMES = [
-  { id: "fineres-minglan", name: "数智溟蓝", scope: "默认（帆软本部）", description: "深邃的科技蓝，象征数据海洋与系统智慧，沉稳且现代。", ink: "#172033", primary: "#1d4ed8", accent: "#0891b2", soft: "#f0f7ff", bg: "#eef4fb" },
-  { id: "jingjin-dansha", name: "禁城丹砂", scope: "京津战区", description: "故宫红墙的浓郁朱砂色，京华贵气与历史厚重感。", ink: "#2f1d1b", primary: "#b42318", accent: "#d97706", soft: "#fff5f2", bg: "#f8eee9" },
-  { id: "dongbei-xuantie", name: "雪莽玄铁", scope: "东北战区", description: "黑土地与冰原交织，玄青色中透出铁质刚毅，凛冽而坚实。", ink: "#111827", primary: "#334155", accent: "#0284c7", soft: "#f3f7fb", bg: "#e8eef3" },
-  { id: "xibei-jinpo", name: "沙鸣金珀", scope: "西北战区", description: "鸣沙山与胡杨林的金色光泽，如琥珀般温润苍茫。", ink: "#2b2118", primary: "#b7791f", accent: "#2563eb", soft: "#fff8e7", bg: "#f7efe0" },
-  { id: "huabei-cangcui", name: "燕山苍翠", scope: "华北战区", description: "太行燕山的常青之色，苍绿中蕴藏雄关与沃野的生机。", ink: "#18251f", primary: "#2f6f4e", accent: "#ca8a04", soft: "#eef8f1", bg: "#e8f1ea" },
-  { id: "shanghai-huanyin", name: "申江幻银", scope: "上海战区", description: "浦江霓虹与摩天楼幕墙的流动银色，未来感与摩登气质。", ink: "#1f2937", primary: "#475569", accent: "#7c3aed", soft: "#f6f8fb", bg: "#edf1f5" },
-  { id: "suwan-shuimo", name: "徽州水墨", scope: "苏皖战区", description: "白墙黛瓦的烟雨灰，如宣纸上的淡墨，雅致而含蓄。", ink: "#1f2933", primary: "#4b5563", accent: "#0f766e", soft: "#f7f7f4", bg: "#ecefeb" },
-  { id: "zhemin-danyan", name: "武夷丹岩", scope: "浙闽战区", description: "丹霞地貌的赤红岩色，融合茶山与海岸的热情之红。", ink: "#30201d", primary: "#c2410c", accent: "#0f766e", soft: "#fff4ec", bg: "#f6e8df" },
-  { id: "huanan-jianghong", name: "木棉绛红", scope: "华南战区", description: "岭南英雄树花朵的绛红色，热烈奔放，饱含亚热带生命力。", ink: "#351820", primary: "#be123c", accent: "#ea580c", soft: "#fff1f2", bg: "#f8e8ec" },
-  { id: "xinan-ziying", name: "蜀锦紫英", scope: "西南战区", description: "巴蜀织锦与藏地高原的紫色调，神秘瑰丽，似霞光映雪。", ink: "#251a35", primary: "#7e22ce", accent: "#db2777", soft: "#f7f0ff", bg: "#eee7f6" },
-  { id: "huazhong-tonglv", name: "云梦铜绿", scope: "华中战区", description: "荆楚青铜器的古锈绿意，云梦泽的幽邃，古朴而沉静。", ink: "#17251f", primary: "#047857", accent: "#b45309", soft: "#effaf5", bg: "#e6f1ec" },
+  { id: "fineres-minglan", name: "星舰溟蓝", scope: "默认（帆软本部）", description: "钴蓝与电光青的组合，像数据平台的深海仪表盘，冷静、锋利、耐看。", ink: "#101828", primary: "#2563eb", accent: "#06b6d4", soft: "#eff6ff", bg: "#edf5ff" },
+  { id: "jingjin-dansha", name: "曜石绯红", scope: "京津战区", description: "绯红只做高亮，搭配冷蓝压住火气，保留力量感但不沉闷。", ink: "#1f1720", primary: "#e11d48", accent: "#2563eb", soft: "#fff1f5", bg: "#f7eef3" },
+  { id: "dongbei-xuantie", name: "极夜冰蓝", scope: "东北战区", description: "极夜石墨与冰蓝高光，克制、硬朗，有清晰的科技质感。", ink: "#111827", primary: "#0f172a", accent: "#38bdf8", soft: "#f1f5f9", bg: "#eaf1f8" },
+  { id: "xibei-jinpo", name: "星河钴蓝", scope: "西北战区", description: "用星河蓝紫替代旧版暖黄，让视觉更轻、更酷，也更适合长时间使用。", ink: "#171a2f", primary: "#4f46e5", accent: "#0ea5e9", soft: "#f1f3ff", bg: "#eef2ff" },
+  { id: "huabei-cangcui", name: "山岚青松", scope: "华北战区", description: "松青与湖蓝组合，稳但不老气，适合管理后台的高频操作场景。", ink: "#12231f", primary: "#0f766e", accent: "#0284c7", soft: "#ecfdf5", bg: "#eaf7f4" },
+  { id: "shanghai-huanyin", name: "申江霓紫", scope: "上海战区", description: "霓虹紫与蓝灰底色，保留都市感和未来感，避免大面积金属灰发脏。", ink: "#1d2333", primary: "#6366f1", accent: "#a855f7", soft: "#f5f3ff", bg: "#eef1fb" },
+  { id: "suwan-shuimo", name: "青瓷雾蓝", scope: "苏皖战区", description: "青瓷蓝绿配浅雾背景，干净、柔和，适合阅读和知识管理。", ink: "#17252f", primary: "#0e7490", accent: "#14b8a6", soft: "#ecfeff", bg: "#eaf7fa" },
+  { id: "zhemin-danyan", name: "海岸珊瑚", scope: "浙闽战区", description: "珊瑚红作为活力点缀，主色偏清爽蓝绿，热烈但不过火。", ink: "#231b2b", primary: "#0891b2", accent: "#f43f5e", soft: "#ecfeff", bg: "#eef8fb" },
+  { id: "huanan-jianghong", name: "木棉玫曜", scope: "华南战区", description: "玫红与紫调形成醒目的南方活力，比深红和橙色更现代。", ink: "#2a1730", primary: "#db2777", accent: "#7c3aed", soft: "#fdf2f8", bg: "#f7eef8" },
+  { id: "xinan-ziying", name: "雪域极紫", scope: "西南战区", description: "极紫配冰青，既有神秘感又不压抑，适合作为更个性的高亮主题。", ink: "#201b3a", primary: "#7c3aed", accent: "#22d3ee", soft: "#f5f3ff", bg: "#f0eefb" },
+  { id: "huazhong-tonglv", name: "云梦青碧", scope: "华中战区", description: "青碧与蓝色形成清爽的湖面感，去掉铜绿的旧感和厚重感。", ink: "#10251f", primary: "#059669", accent: "#0ea5e9", soft: "#ecfdf5", bg: "#eaf8f3" },
 ];
 
 const categoryDefs = [
