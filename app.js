@@ -118,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.48", date: "2026-06-07", updatedAt: "2026-06-07T20:45:00+08:00", title: "材料管理标题可编辑", changes: ["材料管理列表新增材料名称输入框，支持直接修改已分析材料标题。", "标题、资料来源、材料类型任一变化时，单行更新按钮才会启用。", "保存材料标题后，材料列表、话题来源和生成文章来源会使用新的材料名称。"] },
   { version: "v1.8.47", date: "2026-06-07", updatedAt: "2026-06-07T20:35:00+08:00", title: "元信息与 SKILL 标识统一", changes: ["材料、话题、文章的编号、来源、用户、时间等元信息统一改为最小字号。", "材料和话题详情中的 SKILL 改为末尾彩色可点击标识，可直接查看并编辑保存新版本。", "材料详情的 SKILL 版本查看区改为同一行展示，并提升材料标题字号。"] },
   { version: "v1.8.46", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章阅读编辑分离", changes: ["生成文章默认进入阅读态，点击编辑后才允许修改标题、核心观点和正文。", "文章核心观点改为独立色块展示。", "行动建议和学习提示从正文中拆成正文后的两类提示卡。"] },
   { version: "v1.8.45", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章直接编辑", changes: ["生成文章页的标题、核心观点和正文改为直接展示并可原位编辑。", "文章 SKILL 弹窗支持直接修改 SKILL.md 并保存为新版本。", "保存新文章 SKILL 后，旧文章会提示可按最新 SKILL 刷新。"] },
@@ -9204,7 +9205,7 @@ function renderAnalyzedMaterialList() {
         <input type="checkbox" data-analyzed-select="${escapeHtml(doc.id)}" />
       </label>
       <div class="analyzed-material-main">
-        <strong>${escapeHtml(doc.title || doc.fileName)}</strong>
+        <input class="text-input analyzed-title-input" type="text" data-analyzed-title="${escapeHtml(doc.id)}" maxlength="120" value="${escapeHtml(doc.title || doc.fileName || "")}" aria-label="修改材料名称" />
         <small>${escapeHtml(formatDate(doc.lastStudiedAt || doc.updatedAt || doc.createdAt))} · ${escapeHtml(String(doc.analysis?.topics?.length || 0))} 个话题</small>
       </div>
       <select class="text-input" data-analyzed-source="${escapeHtml(doc.id)}">${sourceOptions}</select>
@@ -9213,6 +9214,10 @@ function renderAnalyzedMaterialList() {
       <button class="mini-button danger" type="button" data-analyzed-delete="${escapeHtml(doc.id)}">删除</button>
     </article>
   `).join("");
+  els.analyzedMaterialList.querySelectorAll("[data-analyzed-title]").forEach((input) => {
+    input.dataset.originalValue = input.value.trim();
+    input.addEventListener("input", () => updateAnalyzedMaterialRowState(input.dataset.analyzedTitle));
+  });
   els.analyzedMaterialList.querySelectorAll("[data-analyzed-source]").forEach((select) => {
     const doc = docs.find((item) => item.id === select.dataset.analyzedSource);
     select.value = materialSourceIdForDoc(doc) || state.materialSources[0]?.id || "";
@@ -9228,18 +9233,24 @@ function renderAnalyzedMaterialList() {
   els.analyzedMaterialList.querySelectorAll("[data-analyzed-update]").forEach((button) => {
     button.addEventListener("click", async () => {
       const doc = docs.find((item) => item.id === button.dataset.analyzedUpdate);
+      const titleInput = els.analyzedMaterialList.querySelector(`[data-analyzed-title="${cssEscape(button.dataset.analyzedUpdate)}"]`);
       const sourceSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-source="${cssEscape(button.dataset.analyzedUpdate)}"]`);
       const typeSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-type="${cssEscape(button.dataset.analyzedUpdate)}"]`);
-      if (!doc || !sourceSelect || !typeSelect || button.disabled) {
+      if (!doc || !titleInput || !sourceSelect || !typeSelect || button.disabled) {
+        return;
+      }
+      const title = titleInput.value.trim();
+      if (!title) {
+        window.alert("材料名称不能为空。");
         return;
       }
       const ok = await confirmAction({
         title: "更新材料信息",
-        message: `确认更新“${doc.title || doc.fileName}”的资料来源和材料类型吗？`,
+        message: `确认更新“${doc.title || doc.fileName}”的材料名称、资料来源和材料类型吗？`,
         confirmText: "确认更新",
       });
       if (ok) {
-        await updateDocumentMaterialMeta(doc.id, sourceSelect.value, typeSelect.value);
+        await updateDocumentMaterialMeta(doc.id, sourceSelect.value, typeSelect.value, title);
       }
     });
   });
@@ -9273,12 +9284,14 @@ function updateAnalyzedMaterialRowState(docId) {
   }
   const sourceSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-source="${cssEscape(docId)}"]`);
   const typeSelect = els.analyzedMaterialList.querySelector(`[data-analyzed-type="${cssEscape(docId)}"]`);
+  const titleInput = els.analyzedMaterialList.querySelector(`[data-analyzed-title="${cssEscape(docId)}"]`);
   const updateButton = els.analyzedMaterialList.querySelector(`[data-analyzed-update="${cssEscape(docId)}"]`);
-  if (!sourceSelect || !typeSelect || !updateButton) {
+  if (!sourceSelect || !typeSelect || !titleInput || !updateButton) {
     return;
   }
-  const changed = sourceSelect.value !== sourceSelect.dataset.originalValue || typeSelect.value !== typeSelect.dataset.originalValue;
-  updateButton.disabled = !changed;
+  const title = titleInput.value.trim();
+  const changed = title !== titleInput.dataset.originalValue || sourceSelect.value !== sourceSelect.dataset.originalValue || typeSelect.value !== typeSelect.dataset.originalValue;
+  updateButton.disabled = !changed || !title;
 }
 
 function selectedAnalyzedMaterialIds() {
@@ -9311,15 +9324,17 @@ async function updateDocumentMetadata(docId, categoryId, tagsValue) {
   await loadDocuments();
 }
 
-async function updateDocumentMaterialMeta(docId, sourceId, typeId) {
+async function updateDocumentMaterialMeta(docId, sourceId, typeId, title = "") {
   const doc = state.allDocuments.find((item) => item.id === docId);
   if (!doc || doc.deletedAt || (!isAdmin() && doc.ownerEmailKey !== state.currentUser.emailKey)) {
     return;
   }
   const materialSource = sourceId ? materialSourceById(sourceId) : materialSourceForDoc(doc);
   const materialType = typeId ? materialTypeById(typeId) : materialTypeForDoc(doc);
+  const nextTitle = String(title || doc.title || doc.fileName || "").trim();
   const updated = {
     ...doc,
+    title: nextTitle || doc.title || doc.fileName || "未命名材料",
     materialSourceId: materialSource?.id || "",
     materialSourceName: materialSource?.name || "",
     materialTypeId: materialType?.id || "",
@@ -9328,8 +9343,18 @@ async function updateDocumentMaterialMeta(docId, sourceId, typeId) {
     updatedAt: new Date().toISOString(),
   };
   await withStore(DOC_STORE, "readwrite", (store) => store.put(updated));
-  await logEvent("change_material_meta", { docId, sourceId: updated.materialSourceId, typeId: updated.materialTypeId });
+  if (updated.title !== (doc.title || doc.fileName || "")) {
+    const relatedArticles = await withStore(GENERATED_ARTICLE_STORE, "readonly", (store) => storeRequest(store, (s) => s.getAll()));
+    const changedArticles = relatedArticles.filter((article) => article.docId === docId);
+    if (changedArticles.length) {
+      await withStore(GENERATED_ARTICLE_STORE, "readwrite", (store) => {
+        changedArticles.forEach((article) => store.put({ ...article, docTitle: updated.title, updatedAt: new Date().toISOString() }));
+      });
+    }
+  }
+  await logEvent("change_material_meta", { docId, title: updated.title, sourceId: updated.materialSourceId, typeId: updated.materialTypeId });
   await loadDocuments();
+  await loadGeneratedArticles();
 }
 
 function renderOwnerFilter() {
