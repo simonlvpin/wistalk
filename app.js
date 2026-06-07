@@ -117,6 +117,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.44", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章正式正文展示", changes: ["生成文章页的文章 SKILL 支持点击查看完整内容。", "生成文章编辑区移除重复标题和文章框架字段。", "正文生成和展示改为正式文章段落，自动清理 Markdown 标记。"] },
   { version: "v1.8.43", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章进度与离开保护", changes: ["生成文章和刷新文章时新增进度、百分比和执行日志。", "生成过程中切换页面会提示停止执行或后台继续。", "浏览器刷新或关闭页面时会提示当前生成任务仍在执行。"] },
   { version: "v1.8.42", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点选择逻辑修正", changes: ["推荐文章后默认不再自动选择文章和观点。", "选中文章时才启用并默认选择该文章下的主要观点。", "某篇文章下所有观点取消后，文章会自动取消选择。"] },
   { version: "v1.8.41", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点多选生成", changes: ["延伸文章推荐升级为每个选题输出 5 个主要观点。", "文章选题和选题下的核心观点都支持多选。", "生成文章时会同时使用选中的选题、观点和文章 SKILL。"] },
@@ -541,7 +542,7 @@ const DEFAULT_ARTICLE_SKILL_PROMPT = `# 文章生成 SKILL.md
 - 必须区分“原话题事实”和“大模型延伸理解”；延伸内容可以写成“可以进一步理解为”“在类似组织中常见的是”。
 - 不编造 CEO 原文没有出现的事实。
 - 文章要像一篇认真写出来的学习文章，而不是模板填空。
-- 输出 Markdown 正文，包含标题、二级标题、段落和必要的条列。`;
+- 输出正式文章正文，不使用 Markdown 标记；正文用自然段组织，重要金句或关键判断可以加粗。`;
 
 const DEFAULT_ARTICLE_SKILL = {
   id: "article-skill-default-v1",
@@ -1108,6 +1109,40 @@ function renderArticleGenerationProgressHtml(scope = "topic") {
   `;
 }
 
+function showSkillContentModal(skill, title = "SKILL 内容") {
+  if (!skill) {
+    return;
+  }
+  const overlay = document.createElement("div");
+  overlay.className = "skill-diff-overlay skill-content-overlay";
+  const close = () => overlay.remove();
+  overlay.innerHTML = `
+    <section class="skill-diff-dialog skill-content-dialog" role="dialog" aria-modal="true" aria-labelledby="skillContentTitle">
+      <header class="skill-diff-header">
+        <div>
+          <p class="section-kicker">Skill.md</p>
+          <h3 id="skillContentTitle">${escapeHtml(title)}</h3>
+        </div>
+        <button class="mini-button" type="button" data-skill-content-close>关闭</button>
+      </header>
+      <div class="topic-meta source-meta">
+        <span class="pill">${escapeHtml(skill.skillFileName || skill.name || "SKILL.md")}</span>
+        <span class="pill">${escapeHtml(skill.version || "未记录版本")}</span>
+        <span class="pill">${escapeHtml(skill.summary || "暂无说明")}</span>
+      </div>
+      <pre class="skill-content-pre">${escapeHtml(skill.prompt || "暂无 SKILL 内容。")}</pre>
+    </section>
+  `;
+  overlay.querySelector("[data-skill-content-close]")?.addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      close();
+    }
+  });
+  document.body.appendChild(overlay);
+  overlay.querySelector("[data-skill-content-close]")?.focus();
+}
+
 function rowForGeneratedArticle(article) {
   if (!article) {
     return null;
@@ -1170,7 +1205,7 @@ async function refreshGeneratedArticleWithLatestSkill(id) {
       title: result.title || article.title,
       coreViewpoint: result.coreViewpoint || article.coreViewpoint,
       framework: Array.isArray(result.framework) && result.framework.length ? result.framework : article.framework,
-      content: result.content || article.content,
+      content: normalizeGeneratedArticleContent(result.content || article.content),
       topicContext: topicWritingContext(row),
       ideaViewpoints: normalizeIdeaViewpoints(idea),
       selectedViewpoints,
@@ -5513,19 +5548,22 @@ function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSki
   "article": {
     "title": "",
     "coreViewpoint": "",
-    "framework": ["", "", "", ""],
     "content": ""
   }
 }
 
 要求：
 1. 只输出JSON。
-2. content 使用Markdown结构，包含标题、小标题、段落和必要的条列。
-3. 文章要有核心观点，也要有详细展开，不能只写提纲。
-4. 必须基于原话题观点展开，可以适度做管理学、组织行为、战略执行、案例类比的延伸。
-5. 如果是模型扩展内容，要自然表达为“可以进一步理解为”“在类似组织中”，不要伪装成原文事实。
-6. 文章长度控制在1500字左右，允许1300-1800字浮动。
-7. 必须严格遵循当前文章 SKILL 的结构顺序和写作要求。
+2. content 输出正式文章正文的HTML片段，只允许使用 <p>、<strong>、<h3>、<ul>、<ol>、<li>、<blockquote>、<br>。
+3. content 不要使用 Markdown，不要出现 #、##、###、- ** 这类 Markdown 标记。
+4. content 不要重复输出文章标题，标题只放在 article.title。
+5. 重要金句、关键判断、核心观点可以使用 <strong> 加粗。
+6. 文章要有核心观点，也要有详细展开，不能只写提纲。
+7. 必须基于原话题观点展开，可以适度做管理学、组织行为、战略执行、案例类比的延伸。
+8. 如果是模型扩展内容，要自然表达为“可以进一步理解为”“在类似组织中”，不要伪装成原文事实。
+9. 文章长度控制在1500字左右，允许1300-1800字浮动。
+10. 必须严格遵循当前文章 SKILL 的结构顺序和写作要求，但不要在正文里机械展示“文章框架”四个字。
+11. 如果当前文章 SKILL 中仍出现 Markdown 写法要求，以本次“正式文章正文HTML片段、不要 Markdown”的要求为最高优先级。
 
 当前文章 SKILL：
 ${articleSkill.skillFileName || articleSkill.name} ${articleSkill.version}
@@ -5619,7 +5657,7 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null, options 
     title: article.title || idea.title,
     coreViewpoint: article.coreViewpoint || idea.coreViewpoint,
     framework: Array.isArray(article.framework) && article.framework.length ? article.framework : idea.framework,
-    content: article.content || "",
+    content: normalizeGeneratedArticleContent(article.content || ""),
     topicContext: topicWritingContext(row),
     articleSkillId: articleSkill.id,
     articleSkillName: articleSkill.name,
@@ -8075,7 +8113,7 @@ function sanitizeRichText(html = "") {
   if (!raw || typeof document === "undefined") {
     return "";
   }
-  const allowedTags = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "A", "BLOCKQUOTE", "H4"]);
+  const allowedTags = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "A", "BLOCKQUOTE", "H3", "H4"]);
   const template = document.createElement("template");
   template.innerHTML = raw;
   const cleanNode = (node) => {
@@ -8108,6 +8146,48 @@ function sanitizeRichText(html = "") {
   const output = document.createElement("div");
   output.appendChild(cleaned);
   return output.innerHTML;
+}
+
+function markdownInlineToHtml(text = "") {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(.+?)__/g, "<strong>$1</strong>");
+}
+
+function normalizeGeneratedArticleContent(content = "") {
+  const raw = String(content || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/<[a-z][\s\S]*>/i.test(raw)) {
+    const normalizedHtml = raw
+      .replace(/<\/?h[1256]\b[^>]*>/gi, (tag) => tag.startsWith("</") ? "</h3>" : "<h3>")
+      .replace(/<h2\b[^>]*>/gi, "<h3>")
+      .replace(/<\/h2>/gi, "</h3>")
+      .replace(/<div\b[^>]*>/gi, "<p>")
+      .replace(/<\/div>/gi, "</p>");
+    return sanitizeRichText(normalizedHtml);
+  }
+  const blocks = raw
+    .replace(/\r/g, "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  const html = blocks.map((block) => {
+    const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) {
+      return "";
+    }
+    if (lines.every((line) => /^[-*]\s+/.test(line))) {
+      return `<ul>${lines.map((line) => `<li>${markdownInlineToHtml(line.replace(/^[-*]\s+/, ""))}</li>`).join("")}</ul>`;
+    }
+    const first = lines[0].replace(/^#{1,6}\s*/, "").trim();
+    if (/^#{1,6}\s+/.test(lines[0]) || (lines.length === 1 && first.length <= 32 && /[：:？?]?$/.test(first))) {
+      return `<h3>${markdownInlineToHtml(first)}</h3>`;
+    }
+    return `<p>${markdownInlineToHtml(lines.map((line) => line.replace(/^[-*]\s+/, "")).join(" "))}</p>`;
+  }).join("");
+  return sanitizeRichText(html);
 }
 
 async function updateTrainingNote(docId, skillVersion, html) {
@@ -8699,6 +8779,7 @@ function renderGeneratedArticlePage() {
   const latestArticleSkill = currentArticleSkill();
   const activeNeedsRefresh = active && (!active.articleSkillVersion || active.articleSkillVersion !== latestArticleSkill.version);
   const articleTaskActive = Boolean(state.articleGeneration.active);
+  const activeSkill = active ? articleSkillByVersion(active.articleSkillVersion || "") : null;
   els.generatedArticlePage.innerHTML = `
     <div class="generated-article-shell">
       <aside class="generated-article-list">
@@ -8736,7 +8817,7 @@ function renderGeneratedArticlePage() {
           <div class="topic-meta source-meta">
             <span class="pill">来源材料：${escapeHtml(active.docTitle || "未提及")}</span>
             <span class="pill">来源话题：${escapeHtml(active.topicTitle || "未提及")}</span>
-            <span class="pill">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</span>
+            <button class="pill skill-pill-button" type="button" data-open-generated-skill="${escapeHtml(active.articleSkillVersion || "")}">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</button>
             <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
           </div>
           ${state.articleGeneration.articleId === active.id ? renderArticleGenerationProgressHtml("generated-editor") : ""}
@@ -8748,21 +8829,13 @@ function renderGeneratedArticlePage() {
           ` : ""}
           ${activeNeedsRefresh ? `<p class="category-notice" data-tone="info">当前最新文章 SKILL 是 ${escapeHtml(skillDisplayName(latestArticleSkill, "文章 SKILL.md"))}，这篇文章可刷新到最新写作规则。</p>` : ""}
           <label class="config-field generated-field">
-            <span>文章标题</span>
-            <input class="text-input" id="generatedArticleTitle" value="${escapeHtml(active.title || "")}" />
-          </label>
-          <label class="config-field generated-field">
             <span>文章核心观点</span>
             <textarea class="text-input" id="generatedArticleCore" rows="3">${escapeHtml(active.coreViewpoint || "")}</textarea>
           </label>
-          <label class="config-field generated-field">
-            <span>文章框架（每行一个小节）</span>
-            <textarea class="text-input" id="generatedArticleFramework" rows="5">${escapeHtml((active.framework || []).join("\n"))}</textarea>
-          </label>
-          <label class="config-field generated-field">
-            <span>正文内容（Markdown）</span>
-            <textarea class="text-input generated-content-editor" id="generatedArticleContent" rows="22">${escapeHtml(active.content || "")}</textarea>
-          </label>
+          <section class="generated-field">
+            <span class="generated-field-label">正文内容</span>
+            <div class="generated-content-editor" id="generatedArticleContent" contenteditable="${articleTaskActive ? "false" : "true"}">${normalizeGeneratedArticleContent(active.content || "")}</div>
+          </section>
         ` : `<p class="empty-state">选择左侧文章后进行编辑。</p>`}
       </section>
     </div>
@@ -8776,6 +8849,10 @@ function renderGeneratedArticlePage() {
       state.activeGeneratedArticleId = button.dataset.generatedArticle;
       renderGeneratedArticlePage();
     });
+  });
+  els.generatedArticlePage.querySelector("[data-open-generated-skill]")?.addEventListener("click", () => {
+    const skill = activeSkill || currentArticleSkill();
+    showSkillContentModal(skill, `${skill.skillFileName || skill.name || "文章 SKILL.md"} ${skill.version || ""}`.trim());
   });
   els.generatedArticlePage.querySelector("[data-save-generated-article]")?.addEventListener("click", async (event) => {
     const article = state.generatedArticles.find((item) => item.id === event.currentTarget.dataset.saveGeneratedArticle);
@@ -8792,13 +8869,8 @@ function renderGeneratedArticlePage() {
     }
     const updated = {
       ...article,
-      title: els.generatedArticlePage.querySelector("#generatedArticleTitle")?.value.trim() || article.title,
       coreViewpoint: els.generatedArticlePage.querySelector("#generatedArticleCore")?.value.trim() || "",
-      framework: (els.generatedArticlePage.querySelector("#generatedArticleFramework")?.value || "")
-        .split(/\n+/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-      content: els.generatedArticlePage.querySelector("#generatedArticleContent")?.value || "",
+      content: normalizeGeneratedArticleContent(els.generatedArticlePage.querySelector("#generatedArticleContent")?.innerHTML || ""),
       updatedAt: new Date().toISOString(),
     };
     await saveGeneratedArticle(updated);

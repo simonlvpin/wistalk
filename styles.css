@@ -2656,10 +2656,80 @@ textarea {
   margin-top: 14px;
 }
 
+.generated-field-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #25364a;
+  font-weight: 800;
+}
+
 .generated-field .text-input,
 .generated-content-editor {
   width: 100%;
   max-width: 100%;
+}
+
+.generated-content-editor {
+  min-height: 520px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #241525;
+  line-height: 1.85;
+  outline: none;
+}
+
+.generated-content-editor:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(8, 124, 118, 0.12);
+}
+
+.generated-content-editor h3 {
+  margin: 22px 0 10px;
+  color: #26384c;
+  font-size: calc(var(--body-font-size) + 2px);
+}
+
+.generated-content-editor p {
+  margin: 0 0 14px;
+}
+
+.generated-content-editor strong {
+  color: #201120;
+}
+
+.skill-pill-button {
+  min-height: auto;
+  width: auto;
+  padding: 5px 10px;
+  border: 1px solid #d7e3e8;
+  box-shadow: none;
+  color: #435169;
+  background: #fff;
+}
+
+.skill-pill-button:hover {
+  border-color: var(--teal);
+  color: var(--teal-strong);
+  background: #f3fbfa;
+}
+
+.skill-content-dialog {
+  max-width: min(980px, 92vw);
+}
+
+.skill-content-pre {
+  max-height: 62vh;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  white-space: pre-wrap;
+  line-height: 1.7;
+  color: #29384a;
 }
 
 .original-keywords {
