@@ -13,6 +13,8 @@
   materialSources: [],
   materialTypes: [],
   topicSkills: [],
+  articleSkills: [],
+  articleSkillNotice: { message: "", tone: "info" },
   skillNotice: { message: "", tone: "info" },
   skillRefreshState: { docId: "", percent: 0, message: "" },
   skillBatchRefresh: {
@@ -102,6 +104,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.40", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章生成 SKILL", changes: ["SKILL 大厅新增文章 SKILL，可编辑并按版本管理延伸文章写作规则。", "延伸文章推荐支持多选后批量生成，生成时明确使用当前文章 SKILL。", "生成文章可按最新文章 SKILL 重新刷新正文，并记录使用的 SKILL 版本。"] },
   { version: "v1.8.39", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "话题延伸文章生成", changes: ["高层视角话题底部新增 10 个可写文章选题推荐。", "支持调用大模型刷新推荐并基于选题生成完整文章。", "思想洞察新增生成文章管理页，支持编辑和删除生成文章。"] },
   { version: "v1.8.38", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料页脑图入口收敛", changes: ["材料页移除单独的话题脑图入口，只保留文章层面的脑图。", "文章脑图继续展示整篇材料逻辑，并可穿透到具体话题解析。", "话题列表里的单个话题详情仍保留话题脑图能力。"] },
   { version: "v1.8.37", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "脑图脚本缓存修复", changes: ["本地页面引用 app.js 和 styles.css 时增加版本号，避免浏览器继续运行旧脚本。", "刷新页面后材料页会显示“文章脑图”和“话题脑图”两个入口。", "文章脑图用于整篇材料逻辑，话题脑图用于单个话题逻辑。"] },
@@ -472,6 +475,70 @@ const DEFAULT_TOPIC_SKILL = {
   createdAt: "2026-06-07T13:45:00+08:00",
   isPreset: true,
 };
+const DEFAULT_ARTICLE_SKILL_PROMPT = `# 文章生成 SKILL.md
+
+## 1. 适用范围
+- 适用于“高层视角”话题下的延伸文章写作。
+- 输入通常包括：话题标题、话题来源、问题实质、表面现象、原文证据、CEO解法、理论锚点、可迁移启示，以及用户选中的文章选题。
+- 输出是一篇可学习、可复盘、可迁移的中文管理文章，而不是提纲、摘要或口号。
+
+## 2. 输出篇幅
+- 正文控制在 1500 字左右，允许 1300-1800 字浮动。
+- 每一节都要有具体展开，不能只写小标题或短句。
+- 文章要先精炼表达核心观点，再通过现象、原因、方法和理论总结逐层展开。
+
+## 3. 固定结构
+文章必须按以下六个部分组织，标题可以自然化，但顺序不能改变：
+
+### 3.1 先讲结论和观点
+- 开头直接说清楚文章的核心结论。
+- 用 1-2 段说明这个观点为什么值得学习。
+- 不要先铺垫背景太久。
+
+### 3.2 展示现象
+- 描述原话题中能看到的管理现象、组织行为或业务场景。
+- 必须尽量引用或转述原话题证据。
+- 说明这个现象在企业经营里为什么常见。
+
+### 3.3 分析现象的深层次原因
+- 至少从 2-3 个维度展开，例如：认知、机制、组织、利益、文化、数据、流程、领导力。
+- 要讲清“表面问题”和“底层矛盾”的区别。
+- 可以引入管理学、心理学、组织行为学等理论，但不能装作这是原文事实。
+
+### 3.4 解决方式是什么
+- 输出可操作的方法，而不是泛泛建议。
+- 至少包含 3 个动作：怎么启动、怎么执行、怎么反馈校准。
+- 说明适用条件和可能失效的边界。
+
+### 3.5 从毛泽东思想、毛选角度总结
+- 可以结合《实践论》《矛盾论》《反对本本主义》、群众路线、调查研究、从实践到认识再到实践等视角。
+- 不要生硬贴标签，要把毛选观点和当前管理问题之间的关系说清楚。
+- 避免长篇引用，重点做解释和转化。
+
+### 3.6 总结收尾
+- 回到文章核心观点。
+- 给读者一个可以马上执行的小行动或复盘问题。
+- 结尾要有学习感和行动感。
+
+## 4. 写作要求
+- 语言中文，表达清晰、具体、克制，不要夸张。
+- 必须区分“原话题事实”和“大模型延伸理解”；延伸内容可以写成“可以进一步理解为”“在类似组织中常见的是”。
+- 不编造 CEO 原文没有出现的事实。
+- 文章要像一篇认真写出来的学习文章，而不是模板填空。
+- 输出 Markdown 正文，包含标题、二级标题、段落和必要的条列。`;
+
+const DEFAULT_ARTICLE_SKILL = {
+  id: "article-skill-default-v1",
+  name: "高层视角延伸文章 SKILL",
+  version: "v1.0",
+  versionNumber: 1,
+  summary: "面向高层视角话题的默认文章生成 SKILL，要求 1500 字左右，并按结论、现象、原因、解法、毛选总结、收尾六段组织。",
+  prompt: DEFAULT_ARTICLE_SKILL_PROMPT,
+  skillFileName: "高层视角延伸文章 SKILL.md",
+  changeLog: ["v1.0：建立延伸文章写作的默认六段结构和 1500 字左右篇幅要求。"],
+  createdAt: "2026-06-07T15:30:00+08:00",
+  isPreset: true,
+};
 const THEMES = [
   { id: "fineres-minglan", name: "数智溟蓝", scope: "默认（帆软本部）", description: "深邃的科技蓝，象征数据海洋与系统智慧，沉稳且现代。", ink: "#172033", primary: "#1d4ed8", accent: "#0891b2", soft: "#f0f7ff", bg: "#eef4fb" },
   { id: "jingjin-dansha", name: "禁城丹砂", scope: "京津战区", description: "故宫红墙的浓郁朱砂色，京华贵气与历史厚重感。", ink: "#2f1d1b", primary: "#b42318", accent: "#d97706", soft: "#fff5f2", bg: "#f8eee9" },
@@ -675,6 +742,7 @@ const els = {
   configPage: document.querySelector("#configPage"),
   materialManagePage: document.querySelector("#materialManagePage"),
   topicSkillPage: document.querySelector("#topicSkillPage"),
+  articleSkillPage: document.querySelector("#articleSkillPage"),
   generatedArticlePage: document.querySelector("#generatedArticlePage"),
   recyclePage: document.querySelector("#recyclePage"),
   versionPage: document.querySelector("#versionPage"),
@@ -967,6 +1035,64 @@ async function deleteGeneratedArticle(id) {
     state.activeGeneratedArticleId = "";
   }
   await loadGeneratedArticles();
+}
+
+function rowForGeneratedArticle(article) {
+  if (!article) {
+    return null;
+  }
+  return buildTopicRows().find((row) => row.docId === article.docId && Number(row.topicIndex) === Number(article.topicIndex))
+    || {
+      id: article.topicRef || `${article.docId || "doc"}::${article.topicIndex || 0}`,
+      docId: article.docId || "",
+      docTitle: article.docTitle || "",
+      title: article.topicTitle || "",
+      source: article.source || "",
+      type: article.type || "",
+      topicIndex: Number(article.topicIndex || 0),
+      topic: {
+        title: article.topicTitle || "",
+        sourceSummary: article.source || "",
+        problemEssence: article.coreViewpoint || "",
+        evidence: [],
+      },
+    };
+}
+
+async function refreshGeneratedArticleWithLatestSkill(id) {
+  const article = state.generatedArticles.find((item) => item.id === id);
+  if (!article || (!isAdmin() && article.ownerEmailKey !== state.currentUser?.emailKey)) {
+    return;
+  }
+  const articleSkill = currentArticleSkill();
+  const row = rowForGeneratedArticle(article);
+  const idea = {
+    title: article.ideaTitle || article.title,
+    coreViewpoint: article.coreViewpoint,
+    framework: article.framework || [],
+  };
+  const settings = readDeepSeekSettings();
+  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill), { maxTokens: 14000, temperature: 0.45 });
+  const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
+  const result = parsed?.article || {};
+  const now = new Date().toISOString();
+  const updated = {
+    ...article,
+    title: result.title || article.title,
+    coreViewpoint: result.coreViewpoint || article.coreViewpoint,
+    framework: Array.isArray(result.framework) && result.framework.length ? result.framework : article.framework,
+    content: result.content || article.content,
+    topicContext: topicWritingContext(row),
+    articleSkillId: articleSkill.id,
+    articleSkillName: articleSkill.name,
+    articleSkillVersion: articleSkill.version,
+    articleSkillSummary: articleSkill.summary,
+    articleSkillFileName: articleSkill.skillFileName,
+    articleSkillAppliedAt: now,
+    updatedAt: now,
+  };
+  await saveGeneratedArticle(updated);
+  await logEvent("refresh_generated_article_skill", { articleId: id, articleSkillVersion: articleSkill.version });
 }
 
 async function loadDocCategories() {
@@ -1835,9 +1961,57 @@ function loadTopicSkills() {
   ]);
 }
 
+function dedupeArticleSkills(skills) {
+  const map = new Map();
+  skills.filter(Boolean).forEach((skill) => {
+    const key = skill.version || "";
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, skill);
+      return;
+    }
+    if (!existing.isPreset && skill.isPreset) {
+      return;
+    }
+    if (existing.isPreset && !skill.isPreset) {
+      map.set(key, skill);
+      return;
+    }
+    const existingTime = new Date(existing.createdAt || 0).getTime();
+    const skillTime = new Date(skill.createdAt || 0).getTime();
+    if (skillTime > existingTime) {
+      map.set(key, skill);
+    }
+  });
+  return [...map.values()].sort(compareSkillVersions);
+}
+
+function loadArticleSkills() {
+  const custom = Array.isArray(state.currentUser?.articleSkills) ? state.currentUser.articleSkills : [];
+  state.articleSkills = dedupeArticleSkills([
+    DEFAULT_ARTICLE_SKILL,
+    ...custom
+      .filter((item) => item.version !== DEFAULT_ARTICLE_SKILL.version)
+      .map((item) => ({
+        ...item,
+        name: item.name || DEFAULT_ARTICLE_SKILL.name,
+        skillFileName: item.skillFileName || DEFAULT_ARTICLE_SKILL.skillFileName,
+        changeLog: Array.isArray(item.changeLog) ? item.changeLog : [],
+      })),
+  ]);
+}
+
 function currentTopicSkill(materialTypeId = "type-executive-view") {
   const scoped = state.topicSkills.filter((skill) => skillTypeId(skill) === materialTypeId).sort(compareSkillVersions);
   return scoped[0] || topicSkillTemplateForMaterialType(materialTypeId);
+}
+
+function currentArticleSkill() {
+  return (state.articleSkills || []).slice().sort(compareSkillVersions)[0] || DEFAULT_ARTICLE_SKILL;
+}
+
+function articleSkillByVersion(version = "") {
+  return state.articleSkills.find((skill) => skill.version === version) || currentArticleSkill();
 }
 
 function skillByVersion(version, materialTypeId = "type-executive-view") {
@@ -2200,6 +2374,21 @@ async function saveTopicSkills(skills) {
   loadTopicSkills();
 }
 
+async function saveArticleSkills(skills) {
+  if (!state.currentUser) {
+    return;
+  }
+  const custom = dedupeArticleSkills(skills).filter((skill) => !skill.isPreset);
+  const updated = {
+    ...state.currentUser,
+    articleSkills: custom,
+    articleSkillsUpdatedAt: new Date().toISOString(),
+  };
+  await putUser(updated);
+  state.currentUser = updated;
+  loadArticleSkills();
+}
+
 async function createTopicSkillVersion(summary, prompt, changeLog = null) {
   const summaryValue = String(summary || "").trim();
   const promptValue = String(prompt || "").trim();
@@ -2233,9 +2422,46 @@ async function createTopicSkillVersion(summary, prompt, changeLog = null) {
   renderMaterialOverviewPage();
 }
 
+async function createArticleSkillVersion(summary, prompt, changeLog = null) {
+  const summaryValue = String(summary || "").trim();
+  const promptValue = String(prompt || "").trim();
+  if (!summaryValue || !promptValue) {
+    setArticleSkillNotice("请填写版本说明和文章 SKILL 提示词。", "error");
+    return;
+  }
+  const previousSkill = currentArticleSkill();
+  const maxMinor = Math.max(...state.articleSkills.map((skill) => parseSkillVersionParts(skill.version).minor), 0);
+  const nextMinor = maxMinor + 1;
+  const skill = {
+    id: `article-skill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: DEFAULT_ARTICLE_SKILL.name,
+    version: `v1.${nextMinor}`,
+    versionNumber: nextMinor + 1,
+    summary: summaryValue,
+    prompt: promptValue,
+    skillFileName: DEFAULT_ARTICLE_SKILL.skillFileName,
+    changeLog: Array.isArray(changeLog) && changeLog.length ? changeLog : buildSkillDiffLog(previousSkill, { summary: summaryValue, prompt: promptValue }),
+    createdAt: new Date().toISOString(),
+    isPreset: false,
+  };
+  await saveArticleSkills([...state.articleSkills, skill]);
+  setArticleSkillNotice(`已发布文章 SKILL ${skill.version}。新的推荐、生成和刷新都会使用最新版本。`, "success");
+  renderArticleSkillPage();
+  renderGeneratedArticlePage();
+}
+
 function setSkillNotice(message, tone = "info") {
   state.skillNotice = { message, tone };
   const node = els.topicSkillPage?.querySelector("#topicSkillNotice");
+  if (node) {
+    node.textContent = message;
+    node.dataset.tone = tone;
+  }
+}
+
+function setArticleSkillNotice(message, tone = "info") {
+  state.articleSkillNotice = { message, tone };
+  const node = els.articleSkillPage?.querySelector("#articleSkillNotice");
   if (node) {
     node.textContent = message;
     node.dataset.tone = tone;
@@ -3520,10 +3746,12 @@ async function enterApp() {
   applyFontSettings();
   loadMaterialTaxonomy();
   loadTopicSkills();
+  loadArticleSkills();
   renderThemeGrid();
   renderConfigPage();
   renderMaterialManagePage();
   renderTopicSkillPage();
+  renderArticleSkillPage();
   renderVersionPage();
   await loadUsers();
   renderOwnerFilter();
@@ -5037,7 +5265,7 @@ function topicWritingContext(row) {
   ].join("\n");
 }
 
-function buildArticleIdeaPrompt(row) {
+function buildArticleIdeaPrompt(row, articleSkill = currentArticleSkill()) {
   return [
     {
       role: "system",
@@ -5048,6 +5276,7 @@ function buildArticleIdeaPrompt(row) {
       content: `
 请基于下面这个高层视角话题，推荐10个可以继续写成文章的延伸选题。
 每个选题都必须来自该话题的核心观点、管理矛盾、解法、理论锚点或可迁移启示，不要泛泛而谈。
+请同时考虑当前文章 SKILL 的写作结构，让每个选题都能写成一篇约1500字的深度文章。
 
 输出JSON格式：
 {
@@ -5068,6 +5297,10 @@ function buildArticleIdeaPrompt(row) {
 5. framework 给出4-6个文章小节标题或写作框架。
 6. 语言中文，贴合原话题，不要编造原文事实。
 
+当前文章 SKILL：
+${articleSkill.skillFileName || articleSkill.name} ${articleSkill.version}
+${articleSkill.prompt || ""}
+
 话题上下文：
 ${topicWritingContext(row)}
       `.trim(),
@@ -5075,7 +5308,7 @@ ${topicWritingContext(row)}
   ];
 }
 
-function buildGeneratedArticlePrompt(row, idea) {
+function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSkill()) {
   return [
     {
       role: "system",
@@ -5084,7 +5317,7 @@ function buildGeneratedArticlePrompt(row, idea) {
     {
       role: "user",
       content: `
-请基于高层视角话题和选定的延伸选题，写一篇完整中文文章。
+请基于高层视角话题、选定的延伸选题和当前文章 SKILL，写一篇完整中文文章。
 
 输出JSON格式：
 {
@@ -5102,7 +5335,12 @@ function buildGeneratedArticlePrompt(row, idea) {
 3. 文章要有核心观点，也要有详细展开，不能只写提纲。
 4. 必须基于原话题观点展开，可以适度做管理学、组织行为、战略执行、案例类比的延伸。
 5. 如果是模型扩展内容，要自然表达为“可以进一步理解为”“在类似组织中”，不要伪装成原文事实。
-6. 文章长度建议1200-1800字。
+6. 文章长度控制在1500字左右，允许1300-1800字浮动。
+7. 必须严格遵循当前文章 SKILL 的结构顺序和写作要求。
+
+当前文章 SKILL：
+${articleSkill.skillFileName || articleSkill.name} ${articleSkill.version}
+${articleSkill.prompt || ""}
 
 选题：
 标题：${idea.title || ""}
@@ -5125,10 +5363,11 @@ async function requestTopicArticleIdeas(row, { refresh = false, rerender = null 
   if (!refresh && state.topicArticleIdeas[key]?.ideas?.length) {
     return state.topicArticleIdeas[key].ideas;
   }
-  state.topicArticleIdeas[key] = { ...(state.topicArticleIdeas[key] || {}), loading: true, message: "正在调用大模型生成推荐选题..." };
+  const articleSkill = currentArticleSkill();
+  state.topicArticleIdeas[key] = { ...(state.topicArticleIdeas[key] || {}), loading: true, message: `正在调用大模型生成推荐选题，使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}...` };
   repaint();
   const settings = readDeepSeekSettings();
-  const payload = await callDeepSeek(settings, buildArticleIdeaPrompt(row), { maxTokens: 5000, temperature: 0.55 });
+  const payload = await callDeepSeek(settings, buildArticleIdeaPrompt(row, articleSkill), { maxTokens: 5000, temperature: 0.55 });
   const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
   const ideas = Array.isArray(parsed?.ideas) ? parsed.ideas.slice(0, 10).map((idea, index) => ({
     id: `idea-${Date.now()}-${index}`,
@@ -5139,7 +5378,7 @@ async function requestTopicArticleIdeas(row, { refresh = false, rerender = null 
   if (!ideas.length) {
     throw new Error("大模型没有返回可用的文章选题。");
   }
-  state.topicArticleIdeas[key] = { ideas, selectedIndex: 0, loading: false, message: "已生成10个推荐选题。" };
+  state.topicArticleIdeas[key] = { ideas, selectedIndexes: [0], loading: false, message: `已生成10个推荐选题，写作 SKILL：${skillDisplayName(articleSkill, "文章 SKILL.md")}。` };
   repaint();
   return ideas;
 }
@@ -5151,10 +5390,11 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
     throw new Error("请先选择一个推荐选题。");
   }
   const repaint = typeof rerender === "function" ? rerender : () => renderTopicHomeArticle(row);
-  state.topicArticleIdeas[row.id] = { ...ideaState, generating: true, message: "正在生成完整文章..." };
+  const articleSkill = currentArticleSkill();
+  state.topicArticleIdeas[row.id] = { ...ideaState, generating: true, message: `正在生成完整文章，使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}...` };
   repaint();
   const settings = readDeepSeekSettings();
-  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea), { maxTokens: 12000, temperature: 0.45 });
+  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill), { maxTokens: 14000, temperature: 0.45 });
   const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
   const article = parsed?.article || {};
   const now = new Date().toISOString();
@@ -5174,13 +5414,53 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
     coreViewpoint: article.coreViewpoint || idea.coreViewpoint,
     framework: Array.isArray(article.framework) && article.framework.length ? article.framework : idea.framework,
     content: article.content || "",
+    topicContext: topicWritingContext(row),
+    articleSkillId: articleSkill.id,
+    articleSkillName: articleSkill.name,
+    articleSkillVersion: articleSkill.version,
+    articleSkillSummary: articleSkill.summary,
+    articleSkillFileName: articleSkill.skillFileName,
+    articleSkillAppliedAt: now,
     createdAt: now,
     updatedAt: now,
   };
   await saveGeneratedArticle(saved);
-  state.topicArticleIdeas[row.id] = { ...state.topicArticleIdeas[row.id], generating: false, message: "文章已生成并保存到“生成文章”。" };
+  state.topicArticleIdeas[row.id] = { ...state.topicArticleIdeas[row.id], generating: false, message: `文章已生成并保存到“生成文章”。使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}。` };
   repaint();
   return saved;
+}
+
+async function generateArticlesFromSelectedIdeas(row, rerender = null) {
+  const ideaState = state.topicArticleIdeas[row.id] || {};
+  const selectedIndexes = Array.isArray(ideaState.selectedIndexes)
+    ? ideaState.selectedIndexes
+    : [Number(ideaState.selectedIndex || 0)];
+  const uniqueIndexes = [...new Set(selectedIndexes.map((item) => Number(item)).filter((item) => Number.isInteger(item)))];
+  if (!uniqueIndexes.length) {
+    throw new Error("请至少选择一个推荐选题。");
+  }
+  const created = [];
+  for (let i = 0; i < uniqueIndexes.length; i += 1) {
+    const index = uniqueIndexes[i];
+    state.topicArticleIdeas[row.id] = {
+      ...(state.topicArticleIdeas[row.id] || {}),
+      generating: true,
+      message: `正在生成第 ${i + 1}/${uniqueIndexes.length} 篇文章...`,
+    };
+    if (typeof rerender === "function") {
+      rerender();
+    }
+    created.push(await generateArticleFromIdea(row, index, rerender));
+  }
+  state.topicArticleIdeas[row.id] = {
+    ...(state.topicArticleIdeas[row.id] || {}),
+    generating: false,
+    message: `已生成 ${created.length} 篇文章，并保存到“生成文章”。`,
+  };
+  if (typeof rerender === "function") {
+    rerender();
+  }
+  return created;
 }
 
 async function callDeepSeek(settings, messages, options = {}) {
@@ -6504,7 +6784,10 @@ function bindTopicWritingControls(rootEl, row, rerender) {
   rootEl.querySelectorAll("[data-writing-idea-select]").forEach((input) => {
     input.addEventListener("change", () => {
       const current = state.topicArticleIdeas[row.id] || {};
-      state.topicArticleIdeas[row.id] = { ...current, selectedIndex: Number(input.value || 0) };
+      const selectedIndexes = [...rootEl.querySelectorAll("[data-writing-idea-select]:checked")]
+        .map((node) => Number(node.value))
+        .filter((item) => Number.isInteger(item));
+      state.topicArticleIdeas[row.id] = { ...current, selectedIndexes, selectedIndex: selectedIndexes[0] ?? -1 };
       rerender();
     });
   });
@@ -6527,18 +6810,20 @@ function bindTopicWritingControls(rootEl, row, rerender) {
   rootEl.querySelector("[data-generate-writing-article]")?.addEventListener("click", async () => {
     try {
       const ideaState = state.topicArticleIdeas[row.id] || {};
-      const selectedIndex = Number(ideaState.selectedIndex || 0);
-      const selectedIdea = ideaState.ideas?.[selectedIndex];
+      const selectedIndexes = Array.isArray(ideaState.selectedIndexes)
+        ? ideaState.selectedIndexes
+        : [Number(ideaState.selectedIndex || 0)];
+      const selectedIdeas = selectedIndexes.map((index) => ideaState.ideas?.[Number(index)]).filter(Boolean);
       const ok = await confirmAction({
         title: "生成延伸文章",
-        message: `确认基于这个选题调用大模型生成完整文章吗？\n\n${selectedIdea?.title || "未选择选题"}`,
+        message: `确认基于已选择的 ${selectedIdeas.length} 个选题调用大模型生成完整文章吗？\n\n${selectedIdeas.map((idea, index) => `${index + 1}. ${idea.title}`).join("\n") || "未选择选题"}`,
         confirmText: "确认生成",
       });
       if (!ok) {
         return;
       }
-      const article = await generateArticleFromIdea(row, selectedIndex, rerender);
-      state.activeGeneratedArticleId = article.id;
+      const articles = await generateArticlesFromSelectedIdeas(row, rerender);
+      state.activeGeneratedArticleId = articles[0]?.id || "";
       switchStudyView("generatedArticles");
       renderGeneratedArticlePage();
     } catch (error) {
@@ -8024,11 +8309,15 @@ function buildTopicWritingPanel(row) {
   }
   const ideaState = state.topicArticleIdeas[row.id] || {};
   const ideas = Array.isArray(ideaState.ideas) ? ideaState.ideas : [];
-  const selectedIndex = Number(ideaState.selectedIndex || 0);
+  const selectedIndexes = Array.isArray(ideaState.selectedIndexes)
+    ? ideaState.selectedIndexes.map((item) => Number(item))
+    : [Number(ideaState.selectedIndex || 0)];
+  const articleSkill = currentArticleSkill();
+  const selectedCount = ideas.length ? selectedIndexes.filter((index) => ideas[index]).length : 0;
   const ideaCards = ideas.length
     ? ideas.map((idea, index) => `
-        <label class="writing-idea-card${index === selectedIndex ? " is-selected" : ""}">
-          <input type="radio" name="writingIdea-${escapeHtml(row.id)}" value="${index}" data-writing-idea-select="${index}" ${index === selectedIndex ? "checked" : ""} />
+        <label class="writing-idea-card${selectedIndexes.includes(index) ? " is-selected" : ""}">
+          <input type="checkbox" value="${index}" data-writing-idea-select="${index}" ${selectedIndexes.includes(index) ? "checked" : ""} />
           <span>
             <strong>${escapeHtml(idea.title)}</strong>
             <em>${escapeHtml(idea.coreViewpoint || "暂无核心观点")}</em>
@@ -8042,11 +8331,11 @@ function buildTopicWritingPanel(row) {
       <div class="writing-panel-head">
         <div>
           <h3>延伸文章写作</h3>
-          <p>基于这个话题的核心观点，推荐可继续学习和写作的文章选题。</p>
+          <p>基于这个话题的核心观点，推荐可继续学习和写作的文章选题。当前文章 SKILL：${escapeHtml(skillDisplayName(articleSkill, "文章 SKILL.md"))}</p>
         </div>
         <div class="writing-panel-actions">
           <button class="mini-button" type="button" data-refresh-writing-ideas="${escapeHtml(row.id)}" ${ideaState.loading || ideaState.generating ? "disabled" : ""}>${ideas.length ? "刷新推荐" : "推荐10个选题"}</button>
-          <button class="primary mini-button" type="button" data-generate-writing-article="${escapeHtml(row.id)}" ${!ideas.length || ideaState.loading || ideaState.generating ? "disabled" : ""}>生成文章</button>
+          <button class="primary mini-button" type="button" data-generate-writing-article="${escapeHtml(row.id)}" ${!ideas.length || !selectedCount || ideaState.loading || ideaState.generating ? "disabled" : ""}>生成文章${selectedCount ? `（${selectedCount}）` : ""}</button>
         </div>
       </div>
       ${ideaState.message ? `<p class="writing-status">${escapeHtml(ideaState.message)}</p>` : ""}
@@ -8093,6 +8382,8 @@ function renderGeneratedArticlePage() {
   });
   const active = articles.find((item) => item.id === state.activeGeneratedArticleId) || articles[0] || null;
   state.activeGeneratedArticleId = active?.id || "";
+  const latestArticleSkill = currentArticleSkill();
+  const activeNeedsRefresh = active && (!active.articleSkillVersion || active.articleSkillVersion !== latestArticleSkill.version);
   els.generatedArticlePage.innerHTML = `
     <div class="generated-article-shell">
       <aside class="generated-article-list">
@@ -8108,7 +8399,7 @@ function renderGeneratedArticlePage() {
             <button class="generated-article-card${article.id === state.activeGeneratedArticleId ? " is-active" : ""}" type="button" data-generated-article="${escapeHtml(article.id)}">
               <strong>${escapeHtml(article.title || "未命名文章")}</strong>
               <span>${escapeHtml(article.topicTitle || "未关联话题")}</span>
-              <small>${escapeHtml(formatDate(article.updatedAt || article.createdAt))}${isAdmin() && article.ownerEmail ? ` · ${escapeHtml(article.ownerEmail)}` : ""}</small>
+              <small>${escapeHtml(article.articleSkillVersion || "未记录SKILL")} · ${escapeHtml(formatDate(article.updatedAt || article.createdAt))}${isAdmin() && article.ownerEmail ? ` · ${escapeHtml(article.ownerEmail)}` : ""}</small>
             </button>
           `).join("") : `<p class="empty-state compact">还没有生成文章。请先在高层视角话题底部生成。</p>`}
         </div>
@@ -8121,6 +8412,7 @@ function renderGeneratedArticlePage() {
               <h3>${escapeHtml(active.title || "未命名文章")}</h3>
             </div>
             <div class="generated-editor-actions">
+              ${activeNeedsRefresh ? `<button class="mini-button" type="button" data-refresh-generated-article="${escapeHtml(active.id)}">按最新 SKILL 刷新</button>` : ""}
               <button class="mini-button" type="button" data-delete-generated-article="${escapeHtml(active.id)}">删除</button>
               <button class="primary mini-button" type="button" data-save-generated-article="${escapeHtml(active.id)}">保存修改</button>
             </div>
@@ -8128,8 +8420,10 @@ function renderGeneratedArticlePage() {
           <div class="topic-meta source-meta">
             <span class="pill">来源材料：${escapeHtml(active.docTitle || "未提及")}</span>
             <span class="pill">来源话题：${escapeHtml(active.topicTitle || "未提及")}</span>
+            <span class="pill">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</span>
             <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
           </div>
+          ${activeNeedsRefresh ? `<p class="category-notice" data-tone="info">当前最新文章 SKILL 是 ${escapeHtml(skillDisplayName(latestArticleSkill, "文章 SKILL.md"))}，这篇文章可刷新到最新写作规则。</p>` : ""}
           <label class="config-field generated-field">
             <span>文章标题</span>
             <input class="text-input" id="generatedArticleTitle" value="${escapeHtml(active.title || "")}" />
@@ -8185,6 +8479,26 @@ function renderGeneratedArticlePage() {
       updatedAt: new Date().toISOString(),
     };
     await saveGeneratedArticle(updated);
+  });
+  els.generatedArticlePage.querySelector("[data-refresh-generated-article]")?.addEventListener("click", async (event) => {
+    const article = state.generatedArticles.find((item) => item.id === event.currentTarget.dataset.refreshGeneratedArticle);
+    const ok = await confirmAction({
+      title: "刷新生成文章",
+      message: `确认使用最新文章 SKILL 重新生成“${article?.title || "这篇文章"}”吗？当前正文会被新生成内容覆盖。`,
+      confirmText: "确认刷新",
+    });
+    if (!ok) {
+      return;
+    }
+    event.currentTarget.disabled = true;
+    event.currentTarget.textContent = "刷新中...";
+    try {
+      await refreshGeneratedArticleWithLatestSkill(event.currentTarget.dataset.refreshGeneratedArticle);
+    } catch (error) {
+      console.error(error);
+      window.alert(`刷新失败：${error.message}`);
+      renderGeneratedArticlePage();
+    }
   });
   els.generatedArticlePage.querySelector("[data-delete-generated-article]")?.addEventListener("click", async (event) => {
     const ok = await confirmAction({
@@ -8903,6 +9217,163 @@ function scrollToModuleTop(root, behavior = "auto") {
       behavior,
     });
   });
+}
+
+function renderArticleSkillPage() {
+  if (!els.articleSkillPage) {
+    return;
+  }
+  const versions = dedupeArticleSkills(state.articleSkills?.length ? state.articleSkills : [DEFAULT_ARTICLE_SKILL]);
+  const latest = currentArticleSkill();
+  const versionOptions = versions
+    .map((skill) => `<option value="${escapeHtml(skill.version)}">${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || "文章 SKILL.md")}</option>`)
+    .join("");
+  const defaultCompareLeft = versions[1]?.version || versions[0]?.version || "";
+  const defaultCompareRight = versions[0]?.version || "";
+  const versionRows = versions.map((skill) => {
+    const previousSkill = previousSkillForVersion(skill, versions);
+    const changeLog = skillChangeLogForVersion(skill, versions);
+    return `
+      <article class="skill-version-card${skill.version === latest.version ? " is-current" : ""}">
+        <div class="skill-version-head">
+          <div>
+            <strong>${escapeHtml(skill.version)} · ${escapeHtml(skill.skillFileName || "文章 SKILL.md")}</strong>
+            <small>${escapeHtml(skill.name || "文章 SKILL")} · ${escapeHtml(skill.isPreset ? "系统预设" : "自定义版本")} · ${escapeHtml(formatDate(skill.createdAt))}</small>
+          </div>
+          ${skill.version === latest.version ? `<span class="skill-current-badge">当前生效</span>` : ""}
+        </div>
+        <p>${escapeHtml(skill.summary || "暂无版本说明")}</p>
+        <div class="skill-change-log">
+          <div class="skill-change-log-head">
+            <h4>版本差异日志</h4>
+            ${previousSkill ? `<button class="material-skill-diff-link" type="button" data-article-skill-version-diff="${escapeHtml(skill.version)}">查看差异</button>` : ""}
+          </div>
+          <ul>${changeLog.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        </div>
+        <details>
+          <summary>查看 ${escapeHtml(skill.skillFileName || "文章 SKILL.md")}</summary>
+          <pre>${escapeHtml(skill.prompt || "")}</pre>
+        </details>
+      </article>
+    `;
+  }).join("");
+
+  els.articleSkillPage.innerHTML = `
+    <header class="admin-header">
+      <div>
+        <p class="section-kicker">Article Skill</p>
+        <h2>文章 SKILL</h2>
+      </div>
+    </header>
+    <nav class="module-anchor-nav" aria-label="文章 SKILL 定位">
+      <button type="button" data-anchor-target="#articleSkillCreate">发布新版本</button>
+      <button type="button" data-anchor-target="#articleSkillVersions">版本管理</button>
+    </nav>
+    <p class="category-notice" id="articleSkillNotice" data-tone="${escapeHtml(state.articleSkillNotice.tone || "info")}">${escapeHtml(state.articleSkillNotice.message || "当前最新文章 SKILL 会用于延伸文章推荐、生成和刷新。")}</p>
+    <div class="config-grid skill-config-grid">
+      <section class="config-card config-theme-card" id="articleSkillCreate">
+        <h3>发布文章 SKILL 新版本</h3>
+        <label class="config-field compact-config-field">
+          <span>版本说明</span>
+          <input class="text-input compact-text-input" id="newArticleSkillSummary" maxlength="80" placeholder="例如：强化六段结构和案例展开" />
+        </label>
+        <label class="config-field">
+          <span>${escapeHtml(latest.skillFileName || "文章 SKILL.md")}</span>
+          <textarea class="text-input skill-prompt-input" id="newArticleSkillPrompt" rows="18" placeholder="写清楚文章结构、篇幅、证据要求、禁止事项等。">${escapeHtml(latest.prompt || "")}</textarea>
+        </label>
+        <button class="primary" id="createArticleSkillBtn" type="button" disabled>发布文章 SKILL 新版本</button>
+      </section>
+      <section class="config-card config-theme-card" id="articleSkillVersions">
+        <h3>版本管理</h3>
+        <p class="auth-note">当前最新版本：${escapeHtml(latest.version)}。生成文章可按最新版本重新刷新正文。</p>
+        ${versions.length > 1 ? `
+          <div class="skill-version-compare">
+            <label>
+              <span>左侧版本</span>
+              <select class="text-input" id="articleSkillCompareLeft">${versionOptions}</select>
+            </label>
+            <label>
+              <span>右侧版本</span>
+              <select class="text-input" id="articleSkillCompareRight">${versionOptions}</select>
+            </label>
+            <button class="mini-button" id="articleSkillCompareBtn" type="button">查看差异</button>
+          </div>
+        ` : ""}
+        <div class="skill-version-list">
+          ${versionRows || `<p class="empty-state compact">暂无文章 SKILL 版本。</p>`}
+        </div>
+      </section>
+    </div>
+  `;
+
+  bindAnchorNav(els.articleSkillPage);
+  const skillByRenderedVersion = (version) => versions.find((skill) => skill.version === version);
+  els.articleSkillPage.querySelectorAll("[data-article-skill-version-diff]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const skill = skillByRenderedVersion(button.dataset.articleSkillVersionDiff);
+      const previousSkill = previousSkillForVersion(skill, versions);
+      if (!skill || !previousSkill) {
+        return;
+      }
+      showSkillDiffModal({
+        title: `${skill.version} 与上一版文章 SKILL 差异`,
+        leftSkill: previousSkill,
+        rightSkill: skill,
+        leftLabel: "上一版",
+        rightLabel: "当前版",
+      });
+    });
+  });
+  const compareLeft = els.articleSkillPage.querySelector("#articleSkillCompareLeft");
+  const compareRight = els.articleSkillPage.querySelector("#articleSkillCompareRight");
+  const compareButton = els.articleSkillPage.querySelector("#articleSkillCompareBtn");
+  if (compareLeft) {
+    compareLeft.value = defaultCompareLeft;
+  }
+  if (compareRight) {
+    compareRight.value = defaultCompareRight;
+  }
+  compareButton?.addEventListener("click", () => {
+    const leftSkill = skillByRenderedVersion(compareLeft?.value);
+    const rightSkill = skillByRenderedVersion(compareRight?.value);
+    if (!leftSkill || !rightSkill || leftSkill.version === rightSkill.version) {
+      setArticleSkillNotice("请选择两个不同的文章 SKILL 版本进行对比。", "error");
+      return;
+    }
+    showSkillDiffModal({
+      title: "文章 SKILL 历史版本差异",
+      leftSkill,
+      rightSkill,
+      leftLabel: "左侧版本",
+      rightLabel: "右侧版本",
+    });
+  });
+  const summaryInput = els.articleSkillPage.querySelector("#newArticleSkillSummary");
+  const promptInput = els.articleSkillPage.querySelector("#newArticleSkillPrompt");
+  const createButton = els.articleSkillPage.querySelector("#createArticleSkillBtn");
+  const syncCreateState = () => {
+    const summary = summaryInput?.value.trim() || "";
+    const prompt = promptInput?.value.trim() || "";
+    if (createButton) {
+      createButton.disabled = !summary || !prompt || prompt === (latest.prompt || "");
+    }
+  };
+  summaryInput?.addEventListener("input", syncCreateState);
+  promptInput?.addEventListener("input", syncCreateState);
+  createButton?.addEventListener("click", async () => {
+    const summary = summaryInput?.value.trim() || "";
+    const prompt = promptInput?.value.trim() || "";
+    const diffLog = buildSkillDiffLog(latest, { summary, prompt });
+    const ok = await confirmAction({
+      title: "发布文章 SKILL 新版本",
+      message: `确认发布新的文章 SKILL 版本吗？\n\n与上一版差异：\n${diffLog.map((item) => `- ${item}`).join("\n")}\n\n发布后新的延伸文章生成会默认使用它，历史文章可手动刷新。`,
+      confirmText: "确认发布",
+    });
+    if (ok) {
+      await createArticleSkillVersion(summary, prompt, diffLog);
+    }
+  });
+  syncCreateState();
 }
 
 function renderMaterialManagePage() {
@@ -10049,6 +10520,9 @@ function switchModule(moduleName) {
   }
   if (moduleName === "skill") {
     renderTopicSkillPage();
+  }
+  if (moduleName === "articleSkill") {
+    renderArticleSkillPage();
   }
   if (moduleName === "recycle") {
     renderRecyclePage();
