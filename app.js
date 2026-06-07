@@ -118,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.50", date: "2026-06-07", updatedAt: "2026-06-07T21:05:00+08:00", title: "列表宽度与默认用户筛选优化", changes: ["缩小左侧导航与内容列表之间的留白，让页面横向空间更紧凑。", "材料列表、话题列表、生成文章等左侧列表列宽收窄，右侧主体阅读区更宽。", "管理员进入材料/话题视图时默认只筛选自己的邮箱，需要看其他用户时再手动搜索。"] },
   { version: "v1.8.49", date: "2026-06-07", updatedAt: "2026-06-07T20:55:00+08:00", title: "系统配色重设计", changes: ["重新设计 11 组系统配色，整体改为更现代、更清爽的产品化色彩。", "去掉偏暖黄、土色和脏灰的搭配，改用蓝、青、紫、玫红等更耐看的冷调与高亮色。", "保留原有主题 id，用户已选择的配色不会丢失，只会自动换成新版视觉。"] },
   { version: "v1.8.48", date: "2026-06-07", updatedAt: "2026-06-07T20:45:00+08:00", title: "材料管理标题可编辑", changes: ["材料管理列表新增材料名称输入框，支持直接修改已分析材料标题。", "标题、资料来源、材料类型任一变化时，单行更新按钮才会启用。", "保存材料标题后，材料列表、话题来源和生成文章来源会使用新的材料名称。"] },
   { version: "v1.8.47", date: "2026-06-07", updatedAt: "2026-06-07T20:35:00+08:00", title: "元信息与 SKILL 标识统一", changes: ["材料、话题、文章的编号、来源、用户、时间等元信息统一改为最小字号。", "材料和话题详情中的 SKILL 改为末尾彩色可点击标识，可直接查看并编辑保存新版本。", "材料详情的 SKILL 版本查看区改为同一行展示，并提升材料标题字号。"] },
@@ -3985,7 +3986,9 @@ async function enterApp() {
   document.querySelectorAll(".admin-only").forEach((node) => {
     node.hidden = !isAdmin();
   });
-  state.activeOwner = isAdmin() ? "all" : state.currentUser.emailKey;
+  state.activeOwner = state.currentUser.emailKey;
+  state.topicOwnerFilter = isAdmin() ? state.currentUser.email : "";
+  state.materialListOwnerFilter = isAdmin() ? state.currentUser.email : "";
   applyTheme(state.currentUser.theme || THEMES[0].id);
   applyFontSettings();
   loadMaterialTaxonomy();
@@ -11677,8 +11680,8 @@ els.resetFilterBtn.addEventListener("click", () => {
   els.libraryTagSearch.value = "";
   els.libraryCategoryFilter.value = "";
   if (isAdmin()) {
-    state.activeOwner = "all";
-    els.libraryOwnerFilter.value = "all";
+    state.activeOwner = state.currentUser.emailKey;
+    els.libraryOwnerFilter.value = state.currentUser.emailKey;
     loadDocuments();
   }
   renderDocumentLibrary();
