@@ -104,6 +104,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.42", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点选择逻辑修正", changes: ["推荐文章后默认不再自动选择文章和观点。", "选中文章时才启用并默认选择该文章下的主要观点。", "某篇文章下所有观点取消后，文章会自动取消选择。"] },
   { version: "v1.8.41", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点多选生成", changes: ["延伸文章推荐升级为每个选题输出 5 个主要观点。", "文章选题和选题下的核心观点都支持多选。", "生成文章时会同时使用选中的选题、观点和文章 SKILL。"] },
   { version: "v1.8.40", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章生成 SKILL", changes: ["SKILL 大厅新增文章 SKILL，可编辑并按版本管理延伸文章写作规则。", "延伸文章推荐支持多选后批量生成，生成时明确使用当前文章 SKILL。", "生成文章可按最新文章 SKILL 重新刷新正文，并记录使用的 SKILL 版本。"] },
   { version: "v1.8.39", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "话题延伸文章生成", changes: ["高层视角话题底部新增 10 个可写文章选题推荐。", "支持调用大模型刷新推荐并基于选题生成完整文章。", "思想洞察新增生成文章管理页，支持编辑和删除生成文章。"] },
@@ -5291,7 +5292,6 @@ function normalizeIdeaViewpoints(idea = {}) {
 
 function selectedViewpointsForIdea(ideaState = {}, ideaIndex = 0, idea = {}) {
   const viewpoints = normalizeIdeaViewpoints(idea);
-  const stored = ideaState.selectedViewpoints?.[String(ideaIndex)];
   return selectedViewpointIndexesForIdea(ideaState, ideaIndex, idea)
     .filter((index) => Number.isInteger(index) && viewpoints[index])
     .map((index) => viewpoints[index]);
@@ -5300,7 +5300,11 @@ function selectedViewpointsForIdea(ideaState = {}, ideaIndex = 0, idea = {}) {
 function selectedViewpointIndexesForIdea(ideaState = {}, ideaIndex = 0, idea = {}) {
   const viewpoints = normalizeIdeaViewpoints(idea);
   const stored = ideaState.selectedViewpoints?.[String(ideaIndex)];
-  return Array.isArray(stored) ? stored.map((item) => Number(item)) : viewpoints.map((_, index) => index);
+  if (Array.isArray(stored)) {
+    return stored.map((item) => Number(item));
+  }
+  const selectedIndexes = Array.isArray(ideaState.selectedIndexes) ? ideaState.selectedIndexes.map((item) => Number(item)) : [];
+  return selectedIndexes.includes(Number(ideaIndex)) ? viewpoints.map((_, index) => index) : [];
 }
 
 function buildArticleIdeaPrompt(row, articleSkill = currentArticleSkill()) {
@@ -5420,8 +5424,7 @@ async function requestTopicArticleIdeas(row, { refresh = false, rerender = null 
   if (!ideas.length) {
     throw new Error("大模型没有返回可用的文章选题。");
   }
-  const selectedViewpoints = Object.fromEntries(ideas.map((idea, index) => [String(index), normalizeIdeaViewpoints(idea).map((_, pointIndex) => pointIndex)]));
-  state.topicArticleIdeas[key] = { ideas, selectedIndexes: [0], selectedViewpoints, loading: false, message: `已生成10个推荐选题，写作 SKILL：${skillDisplayName(articleSkill, "文章 SKILL.md")}。` };
+  state.topicArticleIdeas[key] = { ideas, selectedIndexes: [], selectedViewpoints: {}, loading: false, message: `已生成10个推荐选题，写作 SKILL：${skillDisplayName(articleSkill, "文章 SKILL.md")}。请先选择文章，再选择文章下的主要观点。` };
   repaint();
   return ideas;
 }
@@ -5483,7 +5486,7 @@ async function generateArticlesFromSelectedIdeas(row, rerender = null) {
   const ideaState = state.topicArticleIdeas[row.id] || {};
   const selectedIndexes = Array.isArray(ideaState.selectedIndexes)
     ? ideaState.selectedIndexes
-    : [Number(ideaState.selectedIndex || 0)];
+    : [];
   const uniqueIndexes = [...new Set(selectedIndexes.map((item) => Number(item)).filter((item) => Number.isInteger(item)))];
   if (!uniqueIndexes.length) {
     throw new Error("请至少选择一个推荐选题。");
@@ -6837,10 +6840,20 @@ function bindTopicWritingControls(rootEl, row, rerender) {
   rootEl.querySelectorAll("[data-writing-idea-select]").forEach((input) => {
     input.addEventListener("change", () => {
       const current = state.topicArticleIdeas[row.id] || {};
+      const ideaIndex = Number(input.value);
+      const selectedViewpoints = { ...(current.selectedViewpoints || {}) };
+      if (input.checked) {
+        const idea = current.ideas?.[ideaIndex];
+        if (!Array.isArray(selectedViewpoints[String(ideaIndex)]) || !selectedViewpoints[String(ideaIndex)].length) {
+          selectedViewpoints[String(ideaIndex)] = normalizeIdeaViewpoints(idea).map((_, pointIndex) => pointIndex);
+        }
+      } else {
+        selectedViewpoints[String(ideaIndex)] = [];
+      }
       const selectedIndexes = [...rootEl.querySelectorAll("[data-writing-idea-select]:checked")]
         .map((node) => Number(node.value))
         .filter((item) => Number.isInteger(item));
-      state.topicArticleIdeas[row.id] = { ...current, selectedIndexes, selectedIndex: selectedIndexes[0] ?? -1 };
+      state.topicArticleIdeas[row.id] = { ...current, selectedIndexes, selectedIndex: selectedIndexes[0] ?? -1, selectedViewpoints };
       rerender();
     });
   });
@@ -6857,8 +6870,10 @@ function bindTopicWritingControls(rootEl, row, rerender) {
         [String(ideaIndex)]: selectedPointIndexes,
       };
       const selectedIndexes = new Set(Array.isArray(current.selectedIndexes) ? current.selectedIndexes.map((item) => Number(item)) : []);
-      if (input.checked) {
+      if (selectedPointIndexes.length) {
         selectedIndexes.add(ideaIndex);
+      } else {
+        selectedIndexes.delete(ideaIndex);
       }
       state.topicArticleIdeas[row.id] = {
         ...current,
@@ -6890,7 +6905,7 @@ function bindTopicWritingControls(rootEl, row, rerender) {
       const ideaState = state.topicArticleIdeas[row.id] || {};
       const selectedIndexes = Array.isArray(ideaState.selectedIndexes)
         ? ideaState.selectedIndexes
-        : [Number(ideaState.selectedIndex || 0)];
+        : [];
       const selectedIdeas = selectedIndexes.map((index) => ideaState.ideas?.[Number(index)]).filter(Boolean);
       const ideaLines = selectedIndexes
         .map((index, order) => {
@@ -8400,7 +8415,7 @@ function buildTopicWritingPanel(row) {
   const ideas = Array.isArray(ideaState.ideas) ? ideaState.ideas : [];
   const selectedIndexes = Array.isArray(ideaState.selectedIndexes)
     ? ideaState.selectedIndexes.map((item) => Number(item))
-    : [Number(ideaState.selectedIndex || 0)];
+    : [];
   const articleSkill = currentArticleSkill();
   const selectedCount = ideas.length ? selectedIndexes.filter((index) => ideas[index]).length : 0;
   const selectedReadyCount = ideas.length
@@ -8420,10 +8435,11 @@ function buildTopicWritingPanel(row) {
           <div class="writing-viewpoints">
             <strong>主要观点（可多选）</strong>
             ${normalizeIdeaViewpoints(idea).map((point, pointIndex) => {
+              const ideaSelected = selectedIndexes.includes(index);
               const pointSelected = selectedViewpointIndexesForIdea(ideaState, index, idea).includes(pointIndex);
               return `
-                <label class="writing-viewpoint-chip${pointSelected ? " is-selected" : ""}">
-                  <input type="checkbox" value="${pointIndex}" data-writing-viewpoint-select="${pointIndex}" data-writing-viewpoint-idea="${index}" ${pointSelected ? "checked" : ""} />
+                <label class="writing-viewpoint-chip${pointSelected ? " is-selected" : ""}${ideaSelected ? "" : " is-disabled"}">
+                  <input type="checkbox" value="${pointIndex}" data-writing-viewpoint-select="${pointIndex}" data-writing-viewpoint-idea="${index}" ${pointSelected ? "checked" : ""} ${ideaSelected ? "" : "disabled"} />
                   <span>${escapeHtml(point)}</span>
                 </label>
               `;
