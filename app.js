@@ -40,6 +40,7 @@
   generatedArticles: [],
   generatedArticleSearch: "",
   activeGeneratedArticleId: "",
+  generatedArticleEditingId: "",
   articleGeneration: {
     active: false,
     background: false,
@@ -117,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.46", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章阅读编辑分离", changes: ["生成文章默认进入阅读态，点击编辑后才允许修改标题、核心观点和正文。", "文章核心观点改为独立色块展示。", "行动建议和学习提示从正文中拆成正文后的两类提示卡。"] },
   { version: "v1.8.45", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章直接编辑", changes: ["生成文章页的标题、核心观点和正文改为直接展示并可原位编辑。", "文章 SKILL 弹窗支持直接修改 SKILL.md 并保存为新版本。", "保存新文章 SKILL 后，旧文章会提示可按最新 SKILL 刷新。"] },
   { version: "v1.8.44", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章正式正文展示", changes: ["生成文章页的文章 SKILL 支持点击查看完整内容。", "生成文章编辑区移除重复标题和文章框架字段。", "正文生成和展示改为正式文章段落，自动清理 Markdown 标记。"] },
   { version: "v1.8.43", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章进度与离开保护", changes: ["生成文章和刷新文章时新增进度、百分比和执行日志。", "生成过程中切换页面会提示停止执行或后台继续。", "浏览器刷新或关闭页面时会提示当前生成任务仍在执行。"] },
@@ -506,44 +508,45 @@ const DEFAULT_ARTICLE_SKILL_PROMPT = `# 文章生成 SKILL.md
 - 文章要先精炼表达核心观点，再通过现象、原因、方法和理论总结逐层展开。
 
 ## 3. 固定结构
-文章必须按以下六个部分组织，标题可以自然化，但顺序不能改变：
+文章必须按以下六个部分组织，标题要自然化、业务化，并使用“一、二、三……”中文序号；顺序不能改变，但不要把“先讲结论和观点”等模板字段原样作为标题：
 
-### 3.1 先讲结论和观点
+### 3.1 结论与观点
 - 开头直接说清楚文章的核心结论。
 - 用 1-2 段说明这个观点为什么值得学习。
 - 不要先铺垫背景太久。
 
-### 3.2 展示现象
+### 3.2 现象呈现
 - 描述原话题中能看到的管理现象、组织行为或业务场景。
 - 必须尽量引用或转述原话题证据。
 - 说明这个现象在企业经营里为什么常见。
 
-### 3.3 分析现象的深层次原因
+### 3.3 深层原因分析
 - 至少从 2-3 个维度展开，例如：认知、机制、组织、利益、文化、数据、流程、领导力。
 - 要讲清“表面问题”和“底层矛盾”的区别。
 - 可以引入管理学、心理学、组织行为学等理论，但不能装作这是原文事实。
 
-### 3.4 解决方式是什么
+### 3.4 解决方式
 - 输出可操作的方法，而不是泛泛建议。
 - 至少包含 3 个动作：怎么启动、怎么执行、怎么反馈校准。
 - 说明适用条件和可能失效的边界。
 
-### 3.5 从毛泽东思想、毛选角度总结
+### 3.5 毛泽东思想与毛选视角
 - 可以结合《实践论》《矛盾论》《反对本本主义》、群众路线、调查研究、从实践到认识再到实践等视角。
 - 不要生硬贴标签，要把毛选观点和当前管理问题之间的关系说清楚。
 - 避免长篇引用，重点做解释和转化。
 
 ### 3.6 总结收尾
 - 回到文章核心观点。
-- 给读者一个可以马上执行的小行动或复盘问题。
-- 结尾要有学习感和行动感。
+- 正文内只做文章总结，不要把“马上可以执行的小行动”“学习的感觉在于”混入正文。
+- 如果需要行动建议和学习提示，请单独输出为文章外部提示。
 
 ## 4. 写作要求
 - 语言中文，表达清晰、具体、克制，不要夸张。
 - 必须区分“原话题事实”和“大模型延伸理解”；延伸内容可以写成“可以进一步理解为”“在类似组织中常见的是”。
 - 不编造 CEO 原文没有出现的事实。
 - 文章要像一篇认真写出来的学习文章，而不是模板填空。
-- 输出正式文章正文，不使用 Markdown 标记；正文用自然段组织，重要金句或关键判断可以加粗。`;
+- 输出正式文章正文，不使用 Markdown 标记；正文用自然段组织，重要金句或关键判断可以加粗。
+- 正文小标题用 <h3>一、具体标题</h3> 这类形式，标题居中展示；不要出现“先讲结论和观点”“展示现象”“分析现象的深层次原因”“解决方式是什么”等模板词。`;
 
 const DEFAULT_ARTICLE_SKILL = {
   id: "article-skill-default-v1",
@@ -1248,6 +1251,8 @@ async function refreshGeneratedArticleWithLatestSkill(id) {
       coreViewpoint: result.coreViewpoint || article.coreViewpoint,
       framework: Array.isArray(result.framework) && result.framework.length ? result.framework : article.framework,
       content: normalizeGeneratedArticleContent(result.content || article.content),
+      actionTip: result.actionTip || article.actionTip || "",
+      learningTip: result.learningTip || article.learningTip || "",
       topicContext: topicWritingContext(row),
       ideaViewpoints: normalizeIdeaViewpoints(idea),
       selectedViewpoints,
@@ -5590,7 +5595,9 @@ function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSki
   "article": {
     "title": "",
     "coreViewpoint": "",
-    "content": ""
+    "content": "",
+    "actionTip": "",
+    "learningTip": ""
   }
 }
 
@@ -5606,6 +5613,8 @@ function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSki
 9. 文章长度控制在1500字左右，允许1300-1800字浮动。
 10. 必须严格遵循当前文章 SKILL 的结构顺序和写作要求，但不要在正文里机械展示“文章框架”四个字。
 11. 如果当前文章 SKILL 中仍出现 Markdown 写法要求，以本次“正式文章正文HTML片段、不要 Markdown”的要求为最高优先级。
+12. 正文中的小标题必须使用 <h3>一、……</h3>、<h3>二、……</h3> 这样的中文序号，并且标题内容要业务化、具体化；不要直接使用“先讲结论和观点”“展示现象”“分析现象的深层次原因”“解决方式是什么”“从毛泽东思想、毛选角度总结”“总结收尾”这些模板词。
+13. “马上可以执行的小行动”“学习的感觉在于”这类行动建议和学习提示不要写进正文 content，请分别放到 article.actionTip 和 article.learningTip。
 
 当前文章 SKILL：
 ${articleSkill.skillFileName || articleSkill.name} ${articleSkill.version}
@@ -5700,6 +5709,8 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null, options 
     coreViewpoint: article.coreViewpoint || idea.coreViewpoint,
     framework: Array.isArray(article.framework) && article.framework.length ? article.framework : idea.framework,
     content: normalizeGeneratedArticleContent(article.content || ""),
+    actionTip: article.actionTip || "",
+    learningTip: article.learningTip || "",
     topicContext: topicWritingContext(row),
     articleSkillId: articleSkill.id,
     articleSkillName: articleSkill.name,
@@ -8201,6 +8212,7 @@ function normalizeGeneratedArticleContent(content = "") {
   if (!raw) {
     return "";
   }
+  const templateHeadings = new Set(["先讲结论和观点", "展示现象", "分析现象的深层次原因", "解决方式是什么", "从毛泽东思想、毛选角度总结", "总结收尾"]);
   if (/<[a-z][\s\S]*>/i.test(raw)) {
     const normalizedHtml = raw
       .replace(/<\/?h[1256]\b[^>]*>/gi, (tag) => tag.startsWith("</") ? "</h3>" : "<h3>")
@@ -8208,7 +8220,7 @@ function normalizeGeneratedArticleContent(content = "") {
       .replace(/<\/h2>/gi, "</h3>")
       .replace(/<div\b[^>]*>/gi, "<p>")
       .replace(/<\/div>/gi, "</p>");
-    return sanitizeRichText(normalizedHtml);
+    return stripGeneratedArticleTemplateHeadings(sanitizeRichText(normalizedHtml), templateHeadings);
   }
   const blocks = raw
     .replace(/\r/g, "")
@@ -8229,7 +8241,76 @@ function normalizeGeneratedArticleContent(content = "") {
     }
     return `<p>${markdownInlineToHtml(lines.map((line) => line.replace(/^[-*]\s+/, "")).join(" "))}</p>`;
   }).join("");
-  return sanitizeRichText(html);
+  return stripGeneratedArticleTemplateHeadings(sanitizeRichText(html), templateHeadings);
+}
+
+function stripGeneratedArticleTemplateHeadings(html = "", templateHeadings = new Set()) {
+  if (!html || typeof document === "undefined") {
+    return html || "";
+  }
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+  wrapper.querySelectorAll("h3,h4,strong").forEach((node) => {
+    const text = String(node.textContent || "")
+      .replace(/[：:]/g, "")
+      .replace(/^[一二三四五六七八九十]+[、.．]\s*/, "")
+      .replace(/^\d+[、.．]\s*/, "")
+      .trim();
+    if ([...templateHeadings].some((heading) => text === heading || text.startsWith(heading))) {
+      node.remove();
+    }
+  });
+  return wrapper.innerHTML;
+}
+
+function extractGeneratedArticleTips(html = "") {
+  if (!html || typeof document === "undefined") {
+    return { contentHtml: html || "", tips: [] };
+  }
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = normalizeGeneratedArticleContent(html);
+  const tips = [];
+  wrapper.querySelectorAll("p,blockquote,li").forEach((node) => {
+    const text = String(node.textContent || "").trim();
+    if (/马上可以执行的小行动|可以马上执行|行动建议|下一步行动/.test(text)) {
+      tips.push({ type: "action", title: "马上可以执行的小行动", text });
+      node.remove();
+      return;
+    }
+    if (/学习的感觉在于|学习提示|学习收获|复盘问题/.test(text)) {
+      tips.push({ type: "learning", title: "学习提示", text });
+      node.remove();
+    }
+  });
+  return { contentHtml: wrapper.innerHTML, tips };
+}
+
+function generatedArticleTipsForDisplay(article, extractedTips = []) {
+  const tips = Array.isArray(extractedTips) ? [...extractedTips] : [];
+  const hasType = (type) => tips.some((tip) => tip.type === type);
+  if (article?.actionTip && !hasType("action")) {
+    tips.push({ type: "action", title: "马上可以执行的小行动", text: article.actionTip });
+  }
+  if (article?.learningTip && !hasType("learning")) {
+    tips.push({ type: "learning", title: "学习提示", text: article.learningTip });
+  }
+  return tips.filter((tip) => String(tip.text || "").trim());
+}
+
+function renderGeneratedArticleTips(tips = []) {
+  if (!tips.length) {
+    return "";
+  }
+  return `
+    <div class="generated-tip-grid">
+      ${tips.map((tip) => `
+        <article class="generated-tip-card is-${escapeHtml(tip.type)}">
+          <strong>${escapeHtml(tip.title)}</strong>
+          <p>${escapeHtml(tip.text)}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 async function updateTrainingNote(docId, skillVersion, html) {
@@ -8822,6 +8903,12 @@ function renderGeneratedArticlePage() {
   const activeNeedsRefresh = active && (!active.articleSkillVersion || active.articleSkillVersion !== latestArticleSkill.version);
   const articleTaskActive = Boolean(state.articleGeneration.active);
   const activeSkill = active ? articleSkillByVersion(active.articleSkillVersion || "") : null;
+  if (!active || (state.generatedArticleEditingId && state.generatedArticleEditingId !== active.id)) {
+    state.generatedArticleEditingId = "";
+  }
+  const isEditingArticle = Boolean(active && state.generatedArticleEditingId === active.id && !articleTaskActive);
+  const extractedArticle = active ? extractGeneratedArticleTips(active.content || "") : { contentHtml: "", tips: [] };
+  const displayArticleTips = active ? generatedArticleTipsForDisplay(active, extractedArticle.tips) : [];
   els.generatedArticlePage.innerHTML = `
     <div class="generated-article-shell">
       <aside class="generated-article-list">
@@ -8843,24 +8930,31 @@ function renderGeneratedArticlePage() {
           `).join("") : `<p class="empty-state compact">还没有生成文章。请先在高层视角话题底部生成。</p>`}
         </div>
       </aside>
-      <section class="generated-article-editor">
+      <section class="generated-article-editor ${isEditingArticle ? "is-editing" : "is-reading"}">
         ${active ? `
           <div class="generated-editor-head">
             <div>
               <p class="section-kicker">Article Editor</p>
-              <h3 class="generated-title-editor" id="generatedArticleTitle" contenteditable="${articleTaskActive ? "false" : "true"}">${escapeHtml(active.title || "未命名文章")}</h3>
+              <h3 class="generated-title-editor" id="generatedArticleTitle" contenteditable="${isEditingArticle ? "true" : "false"}">${escapeHtml(active.title || "未命名文章")}</h3>
             </div>
             <div class="generated-editor-actions">
-              ${activeNeedsRefresh ? `<button class="mini-button" type="button" data-refresh-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>按最新 SKILL 刷新</button>` : ""}
-              <button class="mini-button" type="button" data-delete-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>删除</button>
-              <button class="primary mini-button" type="button" data-save-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>保存修改</button>
+              ${isEditingArticle ? `
+                <button class="mini-button" type="button" data-cancel-generated-article-edit="${escapeHtml(active.id)}">取消编辑</button>
+                <button class="primary mini-button" type="button" data-save-generated-article="${escapeHtml(active.id)}">保存内容</button>
+              ` : `
+                ${activeNeedsRefresh ? `<button class="mini-button" type="button" data-refresh-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>按最新 SKILL 刷新</button>` : ""}
+                <button class="mini-button" type="button" data-edit-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>编辑</button>
+                <button class="mini-button" type="button" data-delete-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>删除</button>
+              `}
             </div>
           </div>
-          <div class="topic-meta source-meta">
-            <span class="pill">来源材料：${escapeHtml(active.docTitle || "未提及")}</span>
-            <span class="pill">来源话题：${escapeHtml(active.topicTitle || "未提及")}</span>
-            <button class="pill skill-pill-button" type="button" data-open-generated-skill="${escapeHtml(active.articleSkillVersion || "")}">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</button>
-            <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
+          <div class="generated-meta-row">
+            <div class="topic-meta source-meta generated-source-tags">
+              <span class="pill">来源材料：${escapeHtml(active.docTitle || "未提及")}</span>
+              <span class="pill">来源话题：${escapeHtml(active.topicTitle || "未提及")}</span>
+              <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
+            </div>
+            <button class="pill skill-pill-button generated-skill-pill" type="button" data-open-generated-skill="${escapeHtml(active.articleSkillVersion || "")}">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</button>
           </div>
           ${state.articleGeneration.articleId === active.id ? renderArticleGenerationProgressHtml("generated-editor") : ""}
           ${Array.isArray(active.selectedViewpoints) && active.selectedViewpoints.length ? `
@@ -8872,12 +8966,13 @@ function renderGeneratedArticlePage() {
           ${activeNeedsRefresh ? `<p class="category-notice" data-tone="info">当前最新文章 SKILL 是 ${escapeHtml(skillDisplayName(latestArticleSkill, "文章 SKILL.md"))}，这篇文章可刷新到最新写作规则。</p>` : ""}
           <section class="generated-field">
             <span class="generated-field-label">文章核心观点</span>
-            <div class="generated-core-editor" id="generatedArticleCore" contenteditable="${articleTaskActive ? "false" : "true"}">${escapeHtml(active.coreViewpoint || "暂无核心观点")}</div>
+            <div class="generated-core-editor" id="generatedArticleCore" contenteditable="${isEditingArticle ? "true" : "false"}">${escapeHtml(active.coreViewpoint || "暂无核心观点")}</div>
           </section>
           <section class="generated-field">
             <span class="generated-field-label">正文内容</span>
-            <div class="generated-content-editor" id="generatedArticleContent" contenteditable="${articleTaskActive ? "false" : "true"}">${normalizeGeneratedArticleContent(active.content || "")}</div>
+            <div class="generated-content-editor" id="generatedArticleContent" contenteditable="${isEditingArticle ? "true" : "false"}">${extractedArticle.contentHtml}</div>
           </section>
+          ${renderGeneratedArticleTips(displayArticleTips)}
         ` : `<p class="empty-state">选择左侧文章后进行编辑。</p>`}
       </section>
     </div>
@@ -8896,6 +8991,14 @@ function renderGeneratedArticlePage() {
     const skill = activeSkill || currentArticleSkill();
     showSkillContentModal(skill, `${skill.skillFileName || skill.name || "文章 SKILL.md"} ${skill.version || ""}`.trim(), { editable: true });
   });
+  els.generatedArticlePage.querySelector("[data-edit-generated-article]")?.addEventListener("click", (event) => {
+    state.generatedArticleEditingId = event.currentTarget.dataset.editGeneratedArticle || "";
+    renderGeneratedArticlePage();
+  });
+  els.generatedArticlePage.querySelector("[data-cancel-generated-article-edit]")?.addEventListener("click", () => {
+    state.generatedArticleEditingId = "";
+    renderGeneratedArticlePage();
+  });
   els.generatedArticlePage.querySelector("[data-save-generated-article]")?.addEventListener("click", async (event) => {
     const article = state.generatedArticles.find((item) => item.id === event.currentTarget.dataset.saveGeneratedArticle);
     if (!article) {
@@ -8909,13 +9012,17 @@ function renderGeneratedArticlePage() {
     if (!ok) {
       return;
     }
+    const existingTips = generatedArticleTipsForDisplay(article, extractGeneratedArticleTips(article.content || "").tips);
     const updated = {
       ...article,
       title: els.generatedArticlePage.querySelector("#generatedArticleTitle")?.innerText.trim() || article.title,
       coreViewpoint: els.generatedArticlePage.querySelector("#generatedArticleCore")?.innerText.trim() || "",
       content: normalizeGeneratedArticleContent(els.generatedArticlePage.querySelector("#generatedArticleContent")?.innerHTML || ""),
+      actionTip: article.actionTip || existingTips.find((tip) => tip.type === "action")?.text || "",
+      learningTip: article.learningTip || existingTips.find((tip) => tip.type === "learning")?.text || "",
       updatedAt: new Date().toISOString(),
     };
+    state.generatedArticleEditingId = "";
     await saveGeneratedArticle(updated);
   });
   els.generatedArticlePage.querySelector("[data-refresh-generated-article]")?.addEventListener("click", async (event) => {
