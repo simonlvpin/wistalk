@@ -2466,13 +2466,11 @@ textarea {
 
 .writing-idea-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-  cursor: pointer;
 }
 
 .writing-idea-card.is-selected {
@@ -2480,16 +2478,82 @@ textarea {
   background: #f0faf9;
 }
 
-.writing-idea-card span {
+.writing-idea-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  cursor: pointer;
+}
+
+.writing-idea-main span {
   display: grid;
   gap: 6px;
 }
 
-.writing-idea-card em,
-.writing-idea-card small {
+.writing-idea-main em,
+.writing-idea-main small {
   color: #5c6a79;
   font-style: normal;
   line-height: 1.55;
+}
+
+.writing-viewpoints {
+  display: grid;
+  gap: 8px;
+  margin-left: 26px;
+  padding-top: 10px;
+  border-top: 1px dashed #d9e4e8;
+}
+
+.writing-viewpoints > strong {
+  color: #334454;
+}
+
+.writing-viewpoint-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid #dbe6ea;
+  border-radius: 6px;
+  background: #fbfdfd;
+  color: #465668;
+  cursor: pointer;
+  line-height: 1.55;
+}
+
+.writing-viewpoint-chip.is-selected {
+  border-color: rgba(8, 124, 118, 0.42);
+  background: #eef9f7;
+  color: #243c3b;
+}
+
+.generated-viewpoint-basis {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.generated-viewpoint-basis strong {
+  color: var(--teal-strong);
+}
+
+.generated-viewpoint-basis div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.generated-viewpoint-basis span {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #edf7f5;
+  color: #344b4a;
 }
 
 .generated-article-shell {

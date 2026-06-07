@@ -104,6 +104,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.41", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点多选生成", changes: ["延伸文章推荐升级为每个选题输出 5 个主要观点。", "文章选题和选题下的核心观点都支持多选。", "生成文章时会同时使用选中的选题、观点和文章 SKILL。"] },
   { version: "v1.8.40", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章生成 SKILL", changes: ["SKILL 大厅新增文章 SKILL，可编辑并按版本管理延伸文章写作规则。", "延伸文章推荐支持多选后批量生成，生成时明确使用当前文章 SKILL。", "生成文章可按最新文章 SKILL 重新刷新正文，并记录使用的 SKILL 版本。"] },
   { version: "v1.8.39", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "话题延伸文章生成", changes: ["高层视角话题底部新增 10 个可写文章选题推荐。", "支持调用大模型刷新推荐并基于选题生成完整文章。", "思想洞察新增生成文章管理页，支持编辑和删除生成文章。"] },
   { version: "v1.8.38", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料页脑图入口收敛", changes: ["材料页移除单独的话题脑图入口，只保留文章层面的脑图。", "文章脑图继续展示整篇材料逻辑，并可穿透到具体话题解析。", "话题列表里的单个话题详情仍保留话题脑图能力。"] },
@@ -1069,10 +1070,14 @@ async function refreshGeneratedArticleWithLatestSkill(id) {
   const idea = {
     title: article.ideaTitle || article.title,
     coreViewpoint: article.coreViewpoint,
+    viewpoints: article.ideaViewpoints || article.selectedViewpoints || [],
     framework: article.framework || [],
   };
   const settings = readDeepSeekSettings();
-  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill), { maxTokens: 14000, temperature: 0.45 });
+  const selectedViewpoints = Array.isArray(article.selectedViewpoints) && article.selectedViewpoints.length
+    ? article.selectedViewpoints
+    : normalizeIdeaViewpoints(idea);
+  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill, selectedViewpoints), { maxTokens: 14000, temperature: 0.45 });
   const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
   const result = parsed?.article || {};
   const now = new Date().toISOString();
@@ -1083,6 +1088,8 @@ async function refreshGeneratedArticleWithLatestSkill(id) {
     framework: Array.isArray(result.framework) && result.framework.length ? result.framework : article.framework,
     content: result.content || article.content,
     topicContext: topicWritingContext(row),
+    ideaViewpoints: normalizeIdeaViewpoints(idea),
+    selectedViewpoints,
     articleSkillId: articleSkill.id,
     articleSkillName: articleSkill.name,
     articleSkillVersion: articleSkill.version,
@@ -5265,6 +5272,37 @@ function topicWritingContext(row) {
   ].join("\n");
 }
 
+function normalizeIdeaViewpoints(idea = {}) {
+  const candidates = [
+    ...(Array.isArray(idea.viewpoints) ? idea.viewpoints : []),
+    ...(Array.isArray(idea.mainViewpoints) ? idea.mainViewpoints : []),
+    ...(Array.isArray(idea.corePoints) ? idea.corePoints : []),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const fallback = [
+    idea.coreViewpoint,
+    ...(Array.isArray(idea.framework) ? idea.framework : []),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return [...new Set([...candidates, ...fallback])].slice(0, 5);
+}
+
+function selectedViewpointsForIdea(ideaState = {}, ideaIndex = 0, idea = {}) {
+  const viewpoints = normalizeIdeaViewpoints(idea);
+  const stored = ideaState.selectedViewpoints?.[String(ideaIndex)];
+  return selectedViewpointIndexesForIdea(ideaState, ideaIndex, idea)
+    .filter((index) => Number.isInteger(index) && viewpoints[index])
+    .map((index) => viewpoints[index]);
+}
+
+function selectedViewpointIndexesForIdea(ideaState = {}, ideaIndex = 0, idea = {}) {
+  const viewpoints = normalizeIdeaViewpoints(idea);
+  const stored = ideaState.selectedViewpoints?.[String(ideaIndex)];
+  return Array.isArray(stored) ? stored.map((item) => Number(item)) : viewpoints.map((_, index) => index);
+}
+
 function buildArticleIdeaPrompt(row, articleSkill = currentArticleSkill()) {
   return [
     {
@@ -5284,6 +5322,7 @@ function buildArticleIdeaPrompt(row, articleSkill = currentArticleSkill()) {
     {
       "title": "",
       "coreViewpoint": "",
+      "viewpoints": ["", "", "", "", ""],
       "framework": ["", "", "", ""]
     }
   ]
@@ -5294,8 +5333,9 @@ function buildArticleIdeaPrompt(row, articleSkill = currentArticleSkill()) {
 2. 必须输出10个ideas。
 3. title 要像一篇文章标题，具体、有问题感。
 4. coreViewpoint 用1-2句话说明这篇文章要表达的核心观点。
-5. framework 给出4-6个文章小节标题或写作框架。
-6. 语言中文，贴合原话题，不要编造原文事实。
+5. viewpoints 必须给出5个主要观点，每个观点都是文章生成时可单独选择的写作论点，要求具体、互相区分、能展开。
+6. framework 给出4-6个文章小节标题或写作框架。
+7. 语言中文，贴合原话题，不要编造原文事实。
 
 当前文章 SKILL：
 ${articleSkill.skillFileName || articleSkill.name} ${articleSkill.version}
@@ -5308,7 +5348,7 @@ ${topicWritingContext(row)}
   ];
 }
 
-function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSkill()) {
+function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSkill(), selectedViewpoints = []) {
   return [
     {
       role: "system",
@@ -5345,6 +5385,7 @@ ${articleSkill.prompt || ""}
 选题：
 标题：${idea.title || ""}
 核心观点：${idea.coreViewpoint || ""}
+已选主要观点：${compactText(selectedViewpoints.length ? selectedViewpoints : normalizeIdeaViewpoints(idea))}
 框架：${compactText(idea.framework || [])}
 
 话题上下文：
@@ -5373,12 +5414,14 @@ async function requestTopicArticleIdeas(row, { refresh = false, rerender = null 
     id: `idea-${Date.now()}-${index}`,
     title: idea.title || `延伸文章${index + 1}`,
     coreViewpoint: idea.coreViewpoint || "",
+    viewpoints: normalizeIdeaViewpoints(idea),
     framework: Array.isArray(idea.framework) ? idea.framework.filter(Boolean).slice(0, 6) : [],
   })) : [];
   if (!ideas.length) {
     throw new Error("大模型没有返回可用的文章选题。");
   }
-  state.topicArticleIdeas[key] = { ideas, selectedIndexes: [0], loading: false, message: `已生成10个推荐选题，写作 SKILL：${skillDisplayName(articleSkill, "文章 SKILL.md")}。` };
+  const selectedViewpoints = Object.fromEntries(ideas.map((idea, index) => [String(index), normalizeIdeaViewpoints(idea).map((_, pointIndex) => pointIndex)]));
+  state.topicArticleIdeas[key] = { ideas, selectedIndexes: [0], selectedViewpoints, loading: false, message: `已生成10个推荐选题，写作 SKILL：${skillDisplayName(articleSkill, "文章 SKILL.md")}。` };
   repaint();
   return ideas;
 }
@@ -5391,10 +5434,14 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
   }
   const repaint = typeof rerender === "function" ? rerender : () => renderTopicHomeArticle(row);
   const articleSkill = currentArticleSkill();
+  const selectedViewpoints = selectedViewpointsForIdea(ideaState, Number(ideaIndex), idea);
+  if (!selectedViewpoints.length) {
+    throw new Error("请至少选择这个选题下的一个主要观点。");
+  }
   state.topicArticleIdeas[row.id] = { ...ideaState, generating: true, message: `正在生成完整文章，使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}...` };
   repaint();
   const settings = readDeepSeekSettings();
-  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill), { maxTokens: 14000, temperature: 0.45 });
+  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill, selectedViewpoints), { maxTokens: 14000, temperature: 0.45 });
   const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
   const article = parsed?.article || {};
   const now = new Date().toISOString();
@@ -5410,6 +5457,8 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
     source: row.source,
     type: row.type,
     ideaTitle: idea.title,
+    ideaViewpoints: normalizeIdeaViewpoints(idea),
+    selectedViewpoints,
     title: article.title || idea.title,
     coreViewpoint: article.coreViewpoint || idea.coreViewpoint,
     framework: Array.isArray(article.framework) && article.framework.length ? article.framework : idea.framework,
@@ -5438,6 +5487,10 @@ async function generateArticlesFromSelectedIdeas(row, rerender = null) {
   const uniqueIndexes = [...new Set(selectedIndexes.map((item) => Number(item)).filter((item) => Number.isInteger(item)))];
   if (!uniqueIndexes.length) {
     throw new Error("请至少选择一个推荐选题。");
+  }
+  const invalidIndex = uniqueIndexes.find((index) => !selectedViewpointsForIdea(ideaState, index, ideaState.ideas?.[index]).length);
+  if (Number.isInteger(invalidIndex)) {
+    throw new Error(`请至少选择“${ideaState.ideas?.[invalidIndex]?.title || `选题${invalidIndex + 1}`}”下的一个主要观点。`);
   }
   const created = [];
   for (let i = 0; i < uniqueIndexes.length; i += 1) {
@@ -6791,6 +6844,31 @@ function bindTopicWritingControls(rootEl, row, rerender) {
       rerender();
     });
   });
+  rootEl.querySelectorAll("[data-writing-viewpoint-select]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const current = state.topicArticleIdeas[row.id] || {};
+      const ideaIndex = Number(input.dataset.writingViewpointIdea);
+      const selectedPointIndexes = [...rootEl.querySelectorAll("[data-writing-viewpoint-select]")]
+        .filter((node) => Number(node.dataset.writingViewpointIdea) === ideaIndex && node.checked)
+        .map((node) => Number(node.value))
+        .filter((item) => Number.isInteger(item));
+      const selectedViewpoints = {
+        ...(current.selectedViewpoints || {}),
+        [String(ideaIndex)]: selectedPointIndexes,
+      };
+      const selectedIndexes = new Set(Array.isArray(current.selectedIndexes) ? current.selectedIndexes.map((item) => Number(item)) : []);
+      if (input.checked) {
+        selectedIndexes.add(ideaIndex);
+      }
+      state.topicArticleIdeas[row.id] = {
+        ...current,
+        selectedIndexes: [...selectedIndexes].filter((item) => Number.isInteger(item)),
+        selectedIndex: [...selectedIndexes][0] ?? -1,
+        selectedViewpoints,
+      };
+      rerender();
+    });
+  });
   rootEl.querySelector("[data-refresh-writing-ideas]")?.addEventListener("click", async () => {
     try {
       const ok = await confirmAction({
@@ -6814,9 +6892,20 @@ function bindTopicWritingControls(rootEl, row, rerender) {
         ? ideaState.selectedIndexes
         : [Number(ideaState.selectedIndex || 0)];
       const selectedIdeas = selectedIndexes.map((index) => ideaState.ideas?.[Number(index)]).filter(Boolean);
+      const ideaLines = selectedIndexes
+        .map((index, order) => {
+          const idea = ideaState.ideas?.[Number(index)];
+          if (!idea) {
+            return "";
+          }
+          const points = selectedViewpointsForIdea(ideaState, Number(index), idea);
+          return `${order + 1}. ${idea.title}\n   观点：${points.join("；") || "未选择观点"}`;
+        })
+        .filter(Boolean)
+        .join("\n");
       const ok = await confirmAction({
         title: "生成延伸文章",
-        message: `确认基于已选择的 ${selectedIdeas.length} 个选题调用大模型生成完整文章吗？\n\n${selectedIdeas.map((idea, index) => `${index + 1}. ${idea.title}`).join("\n") || "未选择选题"}`,
+        message: `确认基于已选择的 ${selectedIdeas.length} 个选题及其主要观点调用大模型生成完整文章吗？\n\n${ideaLines || "未选择选题"}`,
         confirmText: "确认生成",
       });
       if (!ok) {
@@ -8314,16 +8403,33 @@ function buildTopicWritingPanel(row) {
     : [Number(ideaState.selectedIndex || 0)];
   const articleSkill = currentArticleSkill();
   const selectedCount = ideas.length ? selectedIndexes.filter((index) => ideas[index]).length : 0;
+  const selectedReadyCount = ideas.length
+    ? selectedIndexes.filter((index) => ideas[index] && selectedViewpointsForIdea(ideaState, index, ideas[index]).length).length
+    : 0;
   const ideaCards = ideas.length
     ? ideas.map((idea, index) => `
-        <label class="writing-idea-card${selectedIndexes.includes(index) ? " is-selected" : ""}">
-          <input type="checkbox" value="${index}" data-writing-idea-select="${index}" ${selectedIndexes.includes(index) ? "checked" : ""} />
-          <span>
-            <strong>${escapeHtml(idea.title)}</strong>
-            <em>${escapeHtml(idea.coreViewpoint || "暂无核心观点")}</em>
-            <small>${escapeHtml((idea.framework || []).join(" / ") || "暂无框架")}</small>
-          </span>
-        </label>
+        <article class="writing-idea-card${selectedIndexes.includes(index) ? " is-selected" : ""}">
+          <label class="writing-idea-main">
+            <input type="checkbox" value="${index}" data-writing-idea-select="${index}" ${selectedIndexes.includes(index) ? "checked" : ""} />
+            <span>
+              <strong>${escapeHtml(idea.title)}</strong>
+              <em>${escapeHtml(idea.coreViewpoint || "暂无核心观点")}</em>
+              <small>${escapeHtml((idea.framework || []).join(" / ") || "暂无框架")}</small>
+            </span>
+          </label>
+          <div class="writing-viewpoints">
+            <strong>主要观点（可多选）</strong>
+            ${normalizeIdeaViewpoints(idea).map((point, pointIndex) => {
+              const pointSelected = selectedViewpointIndexesForIdea(ideaState, index, idea).includes(pointIndex);
+              return `
+                <label class="writing-viewpoint-chip${pointSelected ? " is-selected" : ""}">
+                  <input type="checkbox" value="${pointIndex}" data-writing-viewpoint-select="${pointIndex}" data-writing-viewpoint-idea="${index}" ${pointSelected ? "checked" : ""} />
+                  <span>${escapeHtml(point)}</span>
+                </label>
+              `;
+            }).join("") || `<p class="empty-state compact">暂无可选观点。</p>`}
+          </div>
+        </article>
       `).join("")
     : `<p class="empty-state compact">还没有推荐选题。点击“推荐10个选题”后，系统会基于当前话题调用大模型生成。</p>`;
   return `
@@ -8335,7 +8441,7 @@ function buildTopicWritingPanel(row) {
         </div>
         <div class="writing-panel-actions">
           <button class="mini-button" type="button" data-refresh-writing-ideas="${escapeHtml(row.id)}" ${ideaState.loading || ideaState.generating ? "disabled" : ""}>${ideas.length ? "刷新推荐" : "推荐10个选题"}</button>
-          <button class="primary mini-button" type="button" data-generate-writing-article="${escapeHtml(row.id)}" ${!ideas.length || !selectedCount || ideaState.loading || ideaState.generating ? "disabled" : ""}>生成文章${selectedCount ? `（${selectedCount}）` : ""}</button>
+          <button class="primary mini-button" type="button" data-generate-writing-article="${escapeHtml(row.id)}" ${!ideas.length || !selectedReadyCount || selectedReadyCount !== selectedCount || ideaState.loading || ideaState.generating ? "disabled" : ""}>生成文章${selectedReadyCount ? `（${selectedReadyCount}）` : ""}</button>
         </div>
       </div>
       ${ideaState.message ? `<p class="writing-status">${escapeHtml(ideaState.message)}</p>` : ""}
@@ -8423,6 +8529,12 @@ function renderGeneratedArticlePage() {
             <span class="pill">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</span>
             <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
           </div>
+          ${Array.isArray(active.selectedViewpoints) && active.selectedViewpoints.length ? `
+            <div class="generated-viewpoint-basis">
+              <strong>生成依据观点</strong>
+              <div>${active.selectedViewpoints.map((point) => `<span>${escapeHtml(point)}</span>`).join("")}</div>
+            </div>
+          ` : ""}
           ${activeNeedsRefresh ? `<p class="category-notice" data-tone="info">当前最新文章 SKILL 是 ${escapeHtml(skillDisplayName(latestArticleSkill, "文章 SKILL.md"))}，这篇文章可刷新到最新写作规则。</p>` : ""}
           <label class="config-field generated-field">
             <span>文章标题</span>
