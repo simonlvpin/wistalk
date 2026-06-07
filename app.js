@@ -40,6 +40,19 @@
   generatedArticles: [],
   generatedArticleSearch: "",
   activeGeneratedArticleId: "",
+  articleGeneration: {
+    active: false,
+    background: false,
+    completed: false,
+    mode: "",
+    topicRowId: "",
+    articleId: "",
+    percent: 0,
+    title: "",
+    message: "",
+    logs: [],
+    abortController: null,
+  },
   sidebarCollapsed: false,
   activeTopicRef: null,
   activeTopicPane: "analysis",
@@ -104,6 +117,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.43", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章进度与离开保护", changes: ["生成文章和刷新文章时新增进度、百分比和执行日志。", "生成过程中切换页面会提示停止执行或后台继续。", "浏览器刷新或关闭页面时会提示当前生成任务仍在执行。"] },
   { version: "v1.8.42", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点选择逻辑修正", changes: ["推荐文章后默认不再自动选择文章和观点。", "选中文章时才启用并默认选择该文章下的主要观点。", "某篇文章下所有观点取消后，文章会自动取消选择。"] },
   { version: "v1.8.41", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点多选生成", changes: ["延伸文章推荐升级为每个选题输出 5 个主要观点。", "文章选题和选题下的核心观点都支持多选。", "生成文章时会同时使用选中的选题、观点和文章 SKILL。"] },
   { version: "v1.8.40", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章生成 SKILL", changes: ["SKILL 大厅新增文章 SKILL，可编辑并按版本管理延伸文章写作规则。", "延伸文章推荐支持多选后批量生成，生成时明确使用当前文章 SKILL。", "生成文章可按最新文章 SKILL 重新刷新正文，并记录使用的 SKILL 版本。"] },
@@ -1039,6 +1053,61 @@ async function deleteGeneratedArticle(id) {
   await loadGeneratedArticles();
 }
 
+function resetArticleGeneration(mode = "", title = "") {
+  state.articleGeneration = {
+    active: false,
+    background: false,
+    completed: false,
+    mode,
+    topicRowId: "",
+    articleId: "",
+    percent: 0,
+    title,
+    message: "",
+    logs: [],
+    abortController: null,
+  };
+}
+
+function setArticleGenerationProgress(percent, message, title = "") {
+  state.articleGeneration.percent = Math.max(0, Math.min(100, Number(percent) || 0));
+  state.articleGeneration.message = message || "";
+  if (title) {
+    state.articleGeneration.title = title;
+  }
+}
+
+function appendArticleGenerationLog(message) {
+  const line = {
+    id: `article-log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    time: new Date().toISOString(),
+    message,
+  };
+  state.articleGeneration.logs = [...(state.articleGeneration.logs || []), line].slice(-40);
+}
+
+function renderArticleGenerationProgressHtml(scope = "topic") {
+  const task = state.articleGeneration;
+  if (!task.active && !task.completed && !task.message) {
+    return "";
+  }
+  const logs = (task.logs || []).slice(-6);
+  const title = task.title || (task.mode === "refresh" ? "刷新生成文章" : "生成文章");
+  return `
+    <section class="article-generation-progress" data-scope="${escapeHtml(scope)}">
+      <div class="article-generation-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(String(task.percent || 0))}%</span>
+      </div>
+      <div class="progress-track" aria-hidden="true">
+        <div class="progress-fill" style="width:${escapeHtml(String(task.percent || 0))}%"></div>
+      </div>
+      <p>${escapeHtml(task.message || "等待执行。")}</p>
+      ${logs.length ? `<div class="article-generation-log">${logs.map((log) => `<span>${escapeHtml(formatDate(log.time))} · ${escapeHtml(log.message)}</span>`).join("")}</div>` : ""}
+    </section>
+  `;
+}
+
 function rowForGeneratedArticle(article) {
   if (!article) {
     return null;
@@ -1066,6 +1135,13 @@ async function refreshGeneratedArticleWithLatestSkill(id) {
   if (!article || (!isAdmin() && article.ownerEmailKey !== state.currentUser?.emailKey)) {
     return;
   }
+  resetArticleGeneration("refresh", `刷新文章：${article.title || "未命名文章"}`);
+  state.articleGeneration.active = true;
+  state.articleGeneration.articleId = id;
+  state.articleGeneration.abortController = new AbortController();
+  setArticleGenerationProgress(8, "正在准备文章刷新上下文。");
+  appendArticleGenerationLog(`准备刷新文章：${article.title || "未命名文章"}`);
+  renderGeneratedArticlePage();
   const articleSkill = currentArticleSkill();
   const row = rowForGeneratedArticle(article);
   const idea = {
@@ -1078,29 +1154,53 @@ async function refreshGeneratedArticleWithLatestSkill(id) {
   const selectedViewpoints = Array.isArray(article.selectedViewpoints) && article.selectedViewpoints.length
     ? article.selectedViewpoints
     : normalizeIdeaViewpoints(idea);
-  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill, selectedViewpoints), { maxTokens: 14000, temperature: 0.45 });
-  const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
-  const result = parsed?.article || {};
-  const now = new Date().toISOString();
-  const updated = {
-    ...article,
-    title: result.title || article.title,
-    coreViewpoint: result.coreViewpoint || article.coreViewpoint,
-    framework: Array.isArray(result.framework) && result.framework.length ? result.framework : article.framework,
-    content: result.content || article.content,
-    topicContext: topicWritingContext(row),
-    ideaViewpoints: normalizeIdeaViewpoints(idea),
-    selectedViewpoints,
-    articleSkillId: articleSkill.id,
-    articleSkillName: articleSkill.name,
-    articleSkillVersion: articleSkill.version,
-    articleSkillSummary: articleSkill.summary,
-    articleSkillFileName: articleSkill.skillFileName,
-    articleSkillAppliedAt: now,
-    updatedAt: now,
-  };
-  await saveGeneratedArticle(updated);
-  await logEvent("refresh_generated_article_skill", { articleId: id, articleSkillVersion: articleSkill.version });
+  try {
+    setArticleGenerationProgress(25, `正在调用大模型，使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}。`);
+    appendArticleGenerationLog(`调用大模型刷新正文，使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}`);
+    renderGeneratedArticlePage();
+    const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill, selectedViewpoints), { maxTokens: 14000, temperature: 0.45, signal: state.articleGeneration.abortController.signal });
+    setArticleGenerationProgress(72, "大模型已返回，正在解析文章内容。");
+    appendArticleGenerationLog("大模型已返回，开始解析 JSON。");
+    renderGeneratedArticlePage();
+    const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
+    const result = parsed?.article || {};
+    const now = new Date().toISOString();
+    const updated = {
+      ...article,
+      title: result.title || article.title,
+      coreViewpoint: result.coreViewpoint || article.coreViewpoint,
+      framework: Array.isArray(result.framework) && result.framework.length ? result.framework : article.framework,
+      content: result.content || article.content,
+      topicContext: topicWritingContext(row),
+      ideaViewpoints: normalizeIdeaViewpoints(idea),
+      selectedViewpoints,
+      articleSkillId: articleSkill.id,
+      articleSkillName: articleSkill.name,
+      articleSkillVersion: articleSkill.version,
+      articleSkillSummary: articleSkill.summary,
+      articleSkillFileName: articleSkill.skillFileName,
+      articleSkillAppliedAt: now,
+      updatedAt: now,
+    };
+    setArticleGenerationProgress(88, "正在保存刷新后的文章。");
+    appendArticleGenerationLog("正在保存刷新后的文章。");
+    await saveGeneratedArticle(updated);
+    await logEvent("refresh_generated_article_skill", { articleId: id, articleSkillVersion: articleSkill.version });
+    state.articleGeneration.active = false;
+    state.articleGeneration.completed = true;
+    setArticleGenerationProgress(100, "文章已按最新 SKILL 刷新完成。");
+    appendArticleGenerationLog("文章刷新完成。");
+    renderGeneratedArticlePage();
+  } catch (error) {
+    state.articleGeneration.active = false;
+    setArticleGenerationProgress(0, error.message || "文章刷新失败。");
+    appendArticleGenerationLog(`刷新失败：${error.message}`);
+    renderGeneratedArticlePage();
+    throw error;
+  } finally {
+    state.articleGeneration.abortController = null;
+    state.articleGeneration.background = false;
+  }
 }
 
 async function loadDocCategories() {
@@ -3421,7 +3521,52 @@ function confirmSkillBatchLeave() {
   });
 }
 
+function confirmArticleGenerationLeave() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="articleGenerationLeaveTitle">
+        <h3 id="articleGenerationLeaveTitle">确定要离开文章生成吗？</h3>
+        <p>当前大模型还在生成文章。你可以停止本次生成，也可以先跳转页面，生成会在后台继续执行。</p>
+        <div class="confirm-actions">
+          <button class="confirm-submit" type="button" data-action="stop" data-tone="danger">停止生成文章</button>
+          <button class="primary confirm-submit" type="button" data-action="background">仅跳转，后台继续生成</button>
+        </div>
+      </section>
+    `;
+    overlay.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.action;
+        overlay.remove();
+        resolve(action);
+      });
+    });
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-action="background"]')?.focus();
+  });
+}
+
 async function guardAnalysisNavigation(callback) {
+  if (state.articleGeneration.active && !state.articleGeneration.background) {
+    const action = await confirmArticleGenerationLeave();
+    if (action === "stop") {
+      state.articleGeneration.abortController?.abort();
+      state.articleGeneration.active = false;
+      state.articleGeneration.background = false;
+      setArticleGenerationProgress(0, "已停止本次文章生成。");
+      appendArticleGenerationLog("用户停止了本次文章生成。");
+      callback();
+      return;
+    }
+    if (action === "background") {
+      state.articleGeneration.background = true;
+      appendArticleGenerationLog("已切换为后台继续生成，可以先浏览其他页面。");
+      callback();
+      return;
+    }
+    return;
+  }
   if (!state.isAnalyzing || state.allowAnalysisBackground) {
     callback();
     return;
@@ -5429,7 +5574,7 @@ async function requestTopicArticleIdeas(row, { refresh = false, rerender = null 
   return ideas;
 }
 
-async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
+async function generateArticleFromIdea(row, ideaIndex, rerender = null, options = {}) {
   const ideaState = state.topicArticleIdeas[row.id] || {};
   const idea = ideaState.ideas?.[Number(ideaIndex)];
   if (!idea) {
@@ -5441,10 +5586,19 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
   if (!selectedViewpoints.length) {
     throw new Error("请至少选择这个选题下的一个主要观点。");
   }
+  const itemIndex = Number(options.itemIndex || 0);
+  const total = Math.max(1, Number(options.total || 1));
+  const basePercent = 8 + Math.round((itemIndex / total) * 76);
+  const nextPercent = 8 + Math.round(((itemIndex + 1) / total) * 76);
   state.topicArticleIdeas[row.id] = { ...ideaState, generating: true, message: `正在生成完整文章，使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}...` };
+  setArticleGenerationProgress(basePercent, `正在生成第 ${itemIndex + 1}/${total} 篇：${idea.title}`);
+  appendArticleGenerationLog(`开始生成：${idea.title}`);
   repaint();
   const settings = readDeepSeekSettings();
-  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill, selectedViewpoints), { maxTokens: 14000, temperature: 0.45 });
+  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea, articleSkill, selectedViewpoints), { maxTokens: 14000, temperature: 0.45, signal: options.signal });
+  setArticleGenerationProgress(Math.min(nextPercent - 4, 88), `第 ${itemIndex + 1}/${total} 篇已返回，正在解析。`);
+  appendArticleGenerationLog(`大模型已返回：${idea.title}`);
+  repaint();
   const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
   const article = parsed?.article || {};
   const now = new Date().toISOString();
@@ -5477,6 +5631,8 @@ async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
     updatedAt: now,
   };
   await saveGeneratedArticle(saved);
+  setArticleGenerationProgress(nextPercent, `已保存第 ${itemIndex + 1}/${total} 篇：${saved.title}`);
+  appendArticleGenerationLog(`已保存：${saved.title}`);
   state.topicArticleIdeas[row.id] = { ...state.topicArticleIdeas[row.id], generating: false, message: `文章已生成并保存到“生成文章”。使用 ${skillDisplayName(articleSkill, "文章 SKILL.md")}。` };
   repaint();
   return saved;
@@ -5495,28 +5651,63 @@ async function generateArticlesFromSelectedIdeas(row, rerender = null) {
   if (Number.isInteger(invalidIndex)) {
     throw new Error(`请至少选择“${ideaState.ideas?.[invalidIndex]?.title || `选题${invalidIndex + 1}`}”下的一个主要观点。`);
   }
+  resetArticleGeneration("generate", `生成 ${uniqueIndexes.length} 篇文章`);
+  state.articleGeneration.active = true;
+  state.articleGeneration.topicRowId = row.id;
+  state.articleGeneration.abortController = new AbortController();
+  setArticleGenerationProgress(5, `准备生成 ${uniqueIndexes.length} 篇文章。`);
+  appendArticleGenerationLog(`准备生成 ${uniqueIndexes.length} 篇文章。`);
   const created = [];
-  for (let i = 0; i < uniqueIndexes.length; i += 1) {
-    const index = uniqueIndexes[i];
+  try {
+    for (let i = 0; i < uniqueIndexes.length; i += 1) {
+      const index = uniqueIndexes[i];
+      if (state.articleGeneration.abortController.signal.aborted) {
+        throw new Error("本次文章生成已停止。");
+      }
+      state.topicArticleIdeas[row.id] = {
+        ...(state.topicArticleIdeas[row.id] || {}),
+        generating: true,
+        message: `正在生成第 ${i + 1}/${uniqueIndexes.length} 篇文章...`,
+      };
+      if (typeof rerender === "function") {
+        rerender();
+      }
+      created.push(await generateArticleFromIdea(row, index, rerender, {
+        itemIndex: i,
+        total: uniqueIndexes.length,
+        signal: state.articleGeneration.abortController.signal,
+      }));
+    }
+    state.articleGeneration.active = false;
+    state.articleGeneration.completed = true;
+    setArticleGenerationProgress(100, `已生成 ${created.length} 篇文章，并保存到“生成文章”。`);
+    appendArticleGenerationLog(`全部完成，共生成 ${created.length} 篇文章。`);
     state.topicArticleIdeas[row.id] = {
       ...(state.topicArticleIdeas[row.id] || {}),
-      generating: true,
-      message: `正在生成第 ${i + 1}/${uniqueIndexes.length} 篇文章...`,
+      generating: false,
+      message: `已生成 ${created.length} 篇文章，并保存到“生成文章”。`,
     };
     if (typeof rerender === "function") {
       rerender();
     }
-    created.push(await generateArticleFromIdea(row, index, rerender));
+    return created;
+  } catch (error) {
+    state.articleGeneration.active = false;
+    setArticleGenerationProgress(0, error.message || "文章生成失败。");
+    appendArticleGenerationLog(`生成失败：${error.message}`);
+    state.topicArticleIdeas[row.id] = {
+      ...(state.topicArticleIdeas[row.id] || {}),
+      generating: false,
+      message: `生成失败：${error.message}`,
+    };
+    if (typeof rerender === "function") {
+      rerender();
+    }
+    throw error;
+  } finally {
+    state.articleGeneration.abortController = null;
+    state.articleGeneration.background = false;
   }
-  state.topicArticleIdeas[row.id] = {
-    ...(state.topicArticleIdeas[row.id] || {}),
-    generating: false,
-    message: `已生成 ${created.length} 篇文章，并保存到“生成文章”。`,
-  };
-  if (typeof rerender === "function") {
-    rerender();
-  }
-  return created;
 }
 
 async function callDeepSeek(settings, messages, options = {}) {
@@ -6654,7 +6845,7 @@ function renderMaterialOverviewPage() {
     });
   });
   els.materialOverviewPage.querySelector("[data-open-source-topics]")?.addEventListener("click", (event) => {
-    openSourceTopics(event.currentTarget.dataset.openSourceTopics);
+    guardAnalysisNavigation(() => openSourceTopics(event.currentTarget.dataset.openSourceTopics));
   });
   els.materialOverviewPage.querySelectorAll("[data-topic-favorite-doc]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -8461,6 +8652,7 @@ function buildTopicWritingPanel(row) {
         </div>
       </div>
       ${ideaState.message ? `<p class="writing-status">${escapeHtml(ideaState.message)}</p>` : ""}
+      ${state.articleGeneration.topicRowId === row.id ? renderArticleGenerationProgressHtml("topic") : ""}
       <div class="writing-idea-grid">${ideaCards}</div>
     </section>
   `;
@@ -8506,6 +8698,7 @@ function renderGeneratedArticlePage() {
   state.activeGeneratedArticleId = active?.id || "";
   const latestArticleSkill = currentArticleSkill();
   const activeNeedsRefresh = active && (!active.articleSkillVersion || active.articleSkillVersion !== latestArticleSkill.version);
+  const articleTaskActive = Boolean(state.articleGeneration.active);
   els.generatedArticlePage.innerHTML = `
     <div class="generated-article-shell">
       <aside class="generated-article-list">
@@ -8517,6 +8710,7 @@ function renderGeneratedArticlePage() {
           <input class="text-input" id="generatedArticleSearch" type="search" placeholder="搜索文章 / 话题 / 材料" value="${escapeHtml(state.generatedArticleSearch)}" />
         </div>
         <div class="generated-article-cards">
+          ${state.articleGeneration.mode === "refresh" || state.articleGeneration.mode === "generate" ? renderArticleGenerationProgressHtml("generated-list") : ""}
           ${articles.length ? articles.map((article) => `
             <button class="generated-article-card${article.id === state.activeGeneratedArticleId ? " is-active" : ""}" type="button" data-generated-article="${escapeHtml(article.id)}">
               <strong>${escapeHtml(article.title || "未命名文章")}</strong>
@@ -8534,9 +8728,9 @@ function renderGeneratedArticlePage() {
               <h3>${escapeHtml(active.title || "未命名文章")}</h3>
             </div>
             <div class="generated-editor-actions">
-              ${activeNeedsRefresh ? `<button class="mini-button" type="button" data-refresh-generated-article="${escapeHtml(active.id)}">按最新 SKILL 刷新</button>` : ""}
-              <button class="mini-button" type="button" data-delete-generated-article="${escapeHtml(active.id)}">删除</button>
-              <button class="primary mini-button" type="button" data-save-generated-article="${escapeHtml(active.id)}">保存修改</button>
+              ${activeNeedsRefresh ? `<button class="mini-button" type="button" data-refresh-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>按最新 SKILL 刷新</button>` : ""}
+              <button class="mini-button" type="button" data-delete-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>删除</button>
+              <button class="primary mini-button" type="button" data-save-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>保存修改</button>
             </div>
           </div>
           <div class="topic-meta source-meta">
@@ -8545,6 +8739,7 @@ function renderGeneratedArticlePage() {
             <span class="pill">文章 SKILL：${escapeHtml(active.articleSkillFileName || active.articleSkillName || "文章 SKILL.md")} ${escapeHtml(active.articleSkillVersion || "未记录")}</span>
             <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
           </div>
+          ${state.articleGeneration.articleId === active.id ? renderArticleGenerationProgressHtml("generated-editor") : ""}
           ${Array.isArray(active.selectedViewpoints) && active.selectedViewpoints.length ? `
             <div class="generated-viewpoint-basis">
               <strong>生成依据观点</strong>
@@ -10191,7 +10386,7 @@ function renderDrillPage() {
 
   els.drillPage.querySelectorAll(".next-question").forEach((button) => {
     button.addEventListener("click", () => {
-      continueDrill(current.nextQuestions[Number(button.dataset.nextIndex)]);
+      guardAnalysisNavigation(() => continueDrill(current.nextQuestions[Number(button.dataset.nextIndex)]));
     });
   });
   els.drillPage.querySelectorAll(".trail-button").forEach((button) => {
@@ -10200,7 +10395,7 @@ function renderDrillPage() {
       renderDrillPage();
     });
   });
-  els.drillPage.querySelector(".drill-back").addEventListener("click", () => switchStudyView("analysis"));
+  els.drillPage.querySelector(".drill-back").addEventListener("click", () => guardAnalysisNavigation(() => switchStudyView("analysis")));
 }
 
 function drillBlock(title, body) {
@@ -11152,6 +11347,15 @@ els.moduleTabs.forEach((tab) => {
       }
     });
   });
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (state.articleGeneration.active || state.isAnalyzing) {
+    event.preventDefault();
+    event.returnValue = "当前仍有大模型任务正在执行，刷新或关闭页面会中断当前任务。";
+    return event.returnValue;
+  }
+  return undefined;
 });
 
 els.librarySearch.addEventListener("input", (event) => {
