@@ -2425,6 +2425,134 @@ textarea {
   box-shadow: none;
 }
 
+.topic-writing-panel {
+  border-color: #d5e5e4;
+  background: linear-gradient(180deg, #f7fbfb, #fff);
+}
+
+.writing-panel-head,
+.generated-editor-head,
+.generated-article-list-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.writing-panel-head p {
+  margin: 6px 0 0;
+  color: #637182;
+}
+
+.writing-panel-actions,
+.generated-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.writing-status {
+  margin: 10px 0 0;
+  color: var(--teal-strong);
+  font-weight: 800;
+}
+
+.writing-idea-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.writing-idea-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.writing-idea-card.is-selected {
+  border-color: var(--teal);
+  background: #f0faf9;
+}
+
+.writing-idea-card span {
+  display: grid;
+  gap: 6px;
+}
+
+.writing-idea-card em,
+.writing-idea-card small {
+  color: #5c6a79;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.generated-article-shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.generated-article-list,
+.generated-article-editor {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.generated-article-list-head {
+  display: grid;
+}
+
+.generated-article-list-head .text-input {
+  width: 100%;
+  max-width: none;
+}
+
+.generated-article-cards {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.generated-article-card {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.generated-article-card.is-active {
+  border-color: var(--teal);
+  background: #eef9f8;
+}
+
+.generated-article-card span,
+.generated-article-card small {
+  color: #657386;
+}
+
+.generated-field {
+  max-width: 100%;
+  margin-top: 14px;
+}
+
+.generated-field .text-input,
+.generated-content-editor {
+  width: 100%;
+  max-width: 100%;
+}
+
 .original-keywords {
   display: flex;
   flex-wrap: wrap;
@@ -4411,6 +4539,7 @@ textarea {
   }
 
   .topic-home-layout,
+  .generated-article-shell,
   .topic-filters,
   .material-list-filters,
   .config-page,

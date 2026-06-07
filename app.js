@@ -34,6 +34,10 @@
   topicFavoriteOnly: false,
   topicPage: 1,
   topicPageSize: 20,
+  topicArticleIdeas: {},
+  generatedArticles: [],
+  generatedArticleSearch: "",
+  activeGeneratedArticleId: "",
   sidebarCollapsed: false,
   activeTopicRef: null,
   activeTopicPane: "analysis",
@@ -82,12 +86,13 @@
 
 const DB_NAME = "wistalk-learning-db";
 const LEGACY_DB_NAME = "ceo-speech-learning-db";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const DOC_STORE = "documents";
 const USER_STORE = "users";
 const EVENT_STORE = "events";
 const CATEGORY_STORE = "docCategories";
 const PENDING_UPLOAD_STORE = "pendingUploads";
+const GENERATED_ARTICLE_STORE = "generatedArticles";
 const MATERIAL_SOURCES_KEY = "wistalk-material-sources";
 const MATERIAL_TYPES_KEY = "wistalk-material-types";
 const ANALYSIS_COMPLETED_REDIRECT_KEY = "wistalk-analysis-completed-redirect";
@@ -97,6 +102,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.39", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "话题延伸文章生成", changes: ["高层视角话题底部新增 10 个可写文章选题推荐。", "支持调用大模型刷新推荐并基于选题生成完整文章。", "思想洞察新增生成文章管理页，支持编辑和删除生成文章。"] },
   { version: "v1.8.38", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料页脑图入口收敛", changes: ["材料页移除单独的话题脑图入口，只保留文章层面的脑图。", "文章脑图继续展示整篇材料逻辑，并可穿透到具体话题解析。", "话题列表里的单个话题详情仍保留话题脑图能力。"] },
   { version: "v1.8.37", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "脑图脚本缓存修复", changes: ["本地页面引用 app.js 和 styles.css 时增加版本号，避免浏览器继续运行旧脚本。", "刷新页面后材料页会显示“文章脑图”和“话题脑图”两个入口。", "文章脑图用于整篇材料逻辑，话题脑图用于单个话题逻辑。"] },
   { version: "v1.8.36", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料脑图与话题脑图区分", changes: ["材料页的知识脑图改为文章全局脑图，展示全文主线、主题分类、案例场景、话题地图和金句标签。", "话题脑图保留单个话题内部结构，和材料脑图分开展示。", "材料脑图中的话题节点支持穿透到对应话题解析或话题脑图。"] },
@@ -669,6 +675,7 @@ const els = {
   configPage: document.querySelector("#configPage"),
   materialManagePage: document.querySelector("#materialManagePage"),
   topicSkillPage: document.querySelector("#topicSkillPage"),
+  generatedArticlePage: document.querySelector("#generatedArticlePage"),
   recyclePage: document.querySelector("#recyclePage"),
   versionPage: document.querySelector("#versionPage"),
   configAnalyzeMode: document.querySelector("#configAnalyzeMode"),
@@ -693,7 +700,7 @@ const els = {
   studyTabs: document.querySelectorAll(".study-tab"),
 };
 
-const STORE_NAMES = [DOC_STORE, USER_STORE, EVENT_STORE, CATEGORY_STORE, PENDING_UPLOAD_STORE];
+const STORE_NAMES = [DOC_STORE, USER_STORE, EVENT_STORE, CATEGORY_STORE, PENDING_UPLOAD_STORE, GENERATED_ARTICLE_STORE];
 
 function ensureObjectStores(db) {
   if (!db.objectStoreNames.contains(DOC_STORE)) {
@@ -719,6 +726,12 @@ function ensureObjectStores(db) {
   }
   if (!db.objectStoreNames.contains(PENDING_UPLOAD_STORE)) {
     const store = db.createObjectStore(PENDING_UPLOAD_STORE, { keyPath: "ownerEmailKey" });
+    store.createIndex("updatedAt", "updatedAt");
+  }
+  if (!db.objectStoreNames.contains(GENERATED_ARTICLE_STORE)) {
+    const store = db.createObjectStore(GENERATED_ARTICLE_STORE, { keyPath: "id" });
+    store.createIndex("ownerEmailKey", "ownerEmailKey");
+    store.createIndex("topicRef", "topicRef");
     store.createIndex("updatedAt", "updatedAt");
   }
 }
@@ -920,6 +933,40 @@ async function loadDocuments() {
   if (isAdmin()) {
     renderAdminPage();
   }
+}
+
+async function loadGeneratedArticles() {
+  if (!state.currentUser) {
+    state.generatedArticles = [];
+    renderGeneratedArticlePage();
+    return;
+  }
+  const articles = await withStore(GENERATED_ARTICLE_STORE, "readonly", (store) => storeRequest(store, (s) => s.getAll()));
+  const visible = isAdmin()
+    ? articles
+    : articles.filter((item) => item.ownerEmailKey === state.currentUser.emailKey);
+  state.generatedArticles = visible.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  if (!state.generatedArticles.some((item) => item.id === state.activeGeneratedArticleId)) {
+    state.activeGeneratedArticleId = state.generatedArticles[0]?.id || "";
+  }
+  renderGeneratedArticlePage();
+}
+
+async function saveGeneratedArticle(article) {
+  await withStore(GENERATED_ARTICLE_STORE, "readwrite", (store) => store.put(article));
+  await loadGeneratedArticles();
+}
+
+async function deleteGeneratedArticle(id) {
+  const article = state.generatedArticles.find((item) => item.id === id);
+  if (!article || (!isAdmin() && article.ownerEmailKey !== state.currentUser?.emailKey)) {
+    return;
+  }
+  await withStore(GENERATED_ARTICLE_STORE, "readwrite", (store) => store.delete(id));
+  if (state.activeGeneratedArticleId === id) {
+    state.activeGeneratedArticleId = "";
+  }
+  await loadGeneratedArticles();
 }
 
 async function loadDocCategories() {
@@ -3482,6 +3529,7 @@ async function enterApp() {
   renderOwnerFilter();
   await loadDocCategories();
   await loadDocuments();
+  await loadGeneratedArticles();
   await loadPendingUploads();
   renderAdminPage();
   renderRecyclePage();
@@ -4975,6 +5023,166 @@ async function testDeepSeekConnection(settings) {
   return parsed;
 }
 
+function topicWritingContext(row) {
+  const topic = row?.topic || {};
+  return [
+    `话题标题：${topic.title || row?.title || ""}`,
+    `话题来源：${topic.sourceSummary || ""}`,
+    `问题实质：${topic.problemEssence || topic.essence || ""}`,
+    `表面现象：${topic.surfacePhenomenon || ""}`,
+    `原文证据：${(topic.evidence || []).join("；")}`,
+    `CEO解法：${compactText(topic.ceoSolution || "")}`,
+    `底层逻辑：${compactText(topic.theoryAnchors || "")}`,
+    `可迁移启示：${compactText(topic.transferableInsights || "")}`,
+  ].join("\n");
+}
+
+function buildArticleIdeaPrompt(row) {
+  return [
+    {
+      role: "system",
+      content: "你是一个企业管理文章选题策划助手。只输出JSON，不要输出额外解释。",
+    },
+    {
+      role: "user",
+      content: `
+请基于下面这个高层视角话题，推荐10个可以继续写成文章的延伸选题。
+每个选题都必须来自该话题的核心观点、管理矛盾、解法、理论锚点或可迁移启示，不要泛泛而谈。
+
+输出JSON格式：
+{
+  "ideas": [
+    {
+      "title": "",
+      "coreViewpoint": "",
+      "framework": ["", "", "", ""]
+    }
+  ]
+}
+
+要求：
+1. 只输出JSON。
+2. 必须输出10个ideas。
+3. title 要像一篇文章标题，具体、有问题感。
+4. coreViewpoint 用1-2句话说明这篇文章要表达的核心观点。
+5. framework 给出4-6个文章小节标题或写作框架。
+6. 语言中文，贴合原话题，不要编造原文事实。
+
+话题上下文：
+${topicWritingContext(row)}
+      `.trim(),
+    },
+  ];
+}
+
+function buildGeneratedArticlePrompt(row, idea) {
+  return [
+    {
+      role: "system",
+      content: "你是一个企业管理深度文章写作助手。只输出JSON，不要输出额外解释。",
+    },
+    {
+      role: "user",
+      content: `
+请基于高层视角话题和选定的延伸选题，写一篇完整中文文章。
+
+输出JSON格式：
+{
+  "article": {
+    "title": "",
+    "coreViewpoint": "",
+    "framework": ["", "", "", ""],
+    "content": ""
+  }
+}
+
+要求：
+1. 只输出JSON。
+2. content 使用Markdown结构，包含标题、小标题、段落和必要的条列。
+3. 文章要有核心观点，也要有详细展开，不能只写提纲。
+4. 必须基于原话题观点展开，可以适度做管理学、组织行为、战略执行、案例类比的延伸。
+5. 如果是模型扩展内容，要自然表达为“可以进一步理解为”“在类似组织中”，不要伪装成原文事实。
+6. 文章长度建议1200-1800字。
+
+选题：
+标题：${idea.title || ""}
+核心观点：${idea.coreViewpoint || ""}
+框架：${compactText(idea.framework || [])}
+
+话题上下文：
+${topicWritingContext(row)}
+      `.trim(),
+    },
+  ];
+}
+
+async function requestTopicArticleIdeas(row, { refresh = false, rerender = null } = {}) {
+  if (!row) {
+    throw new Error("请先选择一个话题。");
+  }
+  const key = row.id;
+  const repaint = typeof rerender === "function" ? rerender : () => renderTopicHomeArticle(row);
+  if (!refresh && state.topicArticleIdeas[key]?.ideas?.length) {
+    return state.topicArticleIdeas[key].ideas;
+  }
+  state.topicArticleIdeas[key] = { ...(state.topicArticleIdeas[key] || {}), loading: true, message: "正在调用大模型生成推荐选题..." };
+  repaint();
+  const settings = readDeepSeekSettings();
+  const payload = await callDeepSeek(settings, buildArticleIdeaPrompt(row), { maxTokens: 5000, temperature: 0.55 });
+  const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
+  const ideas = Array.isArray(parsed?.ideas) ? parsed.ideas.slice(0, 10).map((idea, index) => ({
+    id: `idea-${Date.now()}-${index}`,
+    title: idea.title || `延伸文章${index + 1}`,
+    coreViewpoint: idea.coreViewpoint || "",
+    framework: Array.isArray(idea.framework) ? idea.framework.filter(Boolean).slice(0, 6) : [],
+  })) : [];
+  if (!ideas.length) {
+    throw new Error("大模型没有返回可用的文章选题。");
+  }
+  state.topicArticleIdeas[key] = { ideas, selectedIndex: 0, loading: false, message: "已生成10个推荐选题。" };
+  repaint();
+  return ideas;
+}
+
+async function generateArticleFromIdea(row, ideaIndex, rerender = null) {
+  const ideaState = state.topicArticleIdeas[row.id] || {};
+  const idea = ideaState.ideas?.[Number(ideaIndex)];
+  if (!idea) {
+    throw new Error("请先选择一个推荐选题。");
+  }
+  const repaint = typeof rerender === "function" ? rerender : () => renderTopicHomeArticle(row);
+  state.topicArticleIdeas[row.id] = { ...ideaState, generating: true, message: "正在生成完整文章..." };
+  repaint();
+  const settings = readDeepSeekSettings();
+  const payload = await callDeepSeek(settings, buildGeneratedArticlePrompt(row, idea), { maxTokens: 12000, temperature: 0.45 });
+  const parsed = parseJsonFromText(payload?.choices?.[0]?.message?.content || "");
+  const article = parsed?.article || {};
+  const now = new Date().toISOString();
+  const saved = {
+    id: `article-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ownerEmail: state.currentUser.email,
+    ownerEmailKey: state.currentUser.emailKey,
+    topicRef: row.id,
+    docId: row.docId,
+    docTitle: row.docTitle,
+    topicIndex: row.topicIndex,
+    topicTitle: row.title,
+    source: row.source,
+    type: row.type,
+    ideaTitle: idea.title,
+    title: article.title || idea.title,
+    coreViewpoint: article.coreViewpoint || idea.coreViewpoint,
+    framework: Array.isArray(article.framework) && article.framework.length ? article.framework : idea.framework,
+    content: article.content || "",
+    createdAt: now,
+    updatedAt: now,
+  };
+  await saveGeneratedArticle(saved);
+  state.topicArticleIdeas[row.id] = { ...state.topicArticleIdeas[row.id], generating: false, message: "文章已生成并保存到“生成文章”。" };
+  repaint();
+  return saved;
+}
+
 async function callDeepSeek(settings, messages, options = {}) {
   if (!settings.apiKey) {
     throw new Error("请先在系统配置 > 大模型配置中填写 API Key。");
@@ -6079,6 +6287,9 @@ function renderMaterialOverviewPage() {
     null,
     materialMindRoot,
   );
+  if (activeMaterialPane === "topics" && row) {
+    bindTopicWritingControls(els.materialOverviewPage, row, () => renderMaterialOverviewPage());
+  }
   els.materialOverviewPage.querySelectorAll("[data-rich-command]").forEach((button) => {
     button.addEventListener("click", () => {
       const editor = els.materialOverviewPage.querySelector("[data-training-note-editor]");
@@ -6267,6 +6478,7 @@ function renderTopicHomeArticle(row) {
     });
   });
   bindMindMapInteractions(els.topicHomeArticle, () => renderTopicHomeArticle(row), row.topic, row);
+  bindTopicWritingControls(els.topicHomeArticle, row, () => renderTopicHomeArticle(row));
   els.topicHomeArticle.querySelectorAll("[data-original-keyword]").forEach((button) => {
     button.addEventListener("click", () => {
       const keyword = button.dataset.originalKeyword;
@@ -6282,6 +6494,57 @@ function renderTopicHomeArticle(row) {
       const topic = analysis?.topics?.[Number(button.dataset.topicFavoriteIndex)];
       await updateTopicFavorite(button.dataset.topicFavoriteDoc, Number(button.dataset.topicFavoriteIndex), !topic?.favorite, version);
     });
+  });
+}
+
+function bindTopicWritingControls(rootEl, row, rerender) {
+  if (!rootEl || !row) {
+    return;
+  }
+  rootEl.querySelectorAll("[data-writing-idea-select]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const current = state.topicArticleIdeas[row.id] || {};
+      state.topicArticleIdeas[row.id] = { ...current, selectedIndex: Number(input.value || 0) };
+      rerender();
+    });
+  });
+  rootEl.querySelector("[data-refresh-writing-ideas]")?.addEventListener("click", async () => {
+    try {
+      const ok = await confirmAction({
+        title: "刷新推荐选题",
+        message: "确认调用大模型重新推荐10个延伸文章选题吗？新的推荐会覆盖当前推荐列表。",
+        confirmText: "确认刷新",
+      });
+      if (!ok) {
+        return;
+      }
+      await requestTopicArticleIdeas(row, { refresh: true, rerender });
+    } catch (error) {
+      state.topicArticleIdeas[row.id] = { ...(state.topicArticleIdeas[row.id] || {}), loading: false, message: `推荐失败：${error.message}` };
+      rerender();
+    }
+  });
+  rootEl.querySelector("[data-generate-writing-article]")?.addEventListener("click", async () => {
+    try {
+      const ideaState = state.topicArticleIdeas[row.id] || {};
+      const selectedIndex = Number(ideaState.selectedIndex || 0);
+      const selectedIdea = ideaState.ideas?.[selectedIndex];
+      const ok = await confirmAction({
+        title: "生成延伸文章",
+        message: `确认基于这个选题调用大模型生成完整文章吗？\n\n${selectedIdea?.title || "未选择选题"}`,
+        confirmText: "确认生成",
+      });
+      if (!ok) {
+        return;
+      }
+      const article = await generateArticleFromIdea(row, selectedIndex, rerender);
+      state.activeGeneratedArticleId = article.id;
+      switchStudyView("generatedArticles");
+      renderGeneratedArticlePage();
+    } catch (error) {
+      state.topicArticleIdeas[row.id] = { ...(state.topicArticleIdeas[row.id] || {}), generating: false, message: `生成失败：${error.message}` };
+      rerender();
+    }
   });
 }
 
@@ -7515,6 +7778,7 @@ function buildTopicArticleHtml(topic, row = null) {
     ${articleCaseSection(caseComparison)}
     ${articleMoreSolutionsSection(moreSolutions)}
     ${articleInsightSection(transferableInsights)}
+    ${buildTopicWritingPanel(row)}
   `;
 }
 
@@ -7754,6 +8018,43 @@ function articleInsightSection(insights = {}) {
   `;
 }
 
+function buildTopicWritingPanel(row) {
+  if (!row?.doc || materialTypeKind(materialTypeIdForDoc(row.doc), materialTypeNameForDoc(row.doc)) !== "topic") {
+    return "";
+  }
+  const ideaState = state.topicArticleIdeas[row.id] || {};
+  const ideas = Array.isArray(ideaState.ideas) ? ideaState.ideas : [];
+  const selectedIndex = Number(ideaState.selectedIndex || 0);
+  const ideaCards = ideas.length
+    ? ideas.map((idea, index) => `
+        <label class="writing-idea-card${index === selectedIndex ? " is-selected" : ""}">
+          <input type="radio" name="writingIdea-${escapeHtml(row.id)}" value="${index}" data-writing-idea-select="${index}" ${index === selectedIndex ? "checked" : ""} />
+          <span>
+            <strong>${escapeHtml(idea.title)}</strong>
+            <em>${escapeHtml(idea.coreViewpoint || "暂无核心观点")}</em>
+            <small>${escapeHtml((idea.framework || []).join(" / ") || "暂无框架")}</small>
+          </span>
+        </label>
+      `).join("")
+    : `<p class="empty-state compact">还没有推荐选题。点击“推荐10个选题”后，系统会基于当前话题调用大模型生成。</p>`;
+  return `
+    <section class="article-section topic-writing-panel" data-topic-writing="${escapeHtml(row.id)}">
+      <div class="writing-panel-head">
+        <div>
+          <h3>延伸文章写作</h3>
+          <p>基于这个话题的核心观点，推荐可继续学习和写作的文章选题。</p>
+        </div>
+        <div class="writing-panel-actions">
+          <button class="mini-button" type="button" data-refresh-writing-ideas="${escapeHtml(row.id)}" ${ideaState.loading || ideaState.generating ? "disabled" : ""}>${ideas.length ? "刷新推荐" : "推荐10个选题"}</button>
+          <button class="primary mini-button" type="button" data-generate-writing-article="${escapeHtml(row.id)}" ${!ideas.length || ideaState.loading || ideaState.generating ? "disabled" : ""}>生成文章</button>
+        </div>
+      </div>
+      ${ideaState.message ? `<p class="writing-status">${escapeHtml(ideaState.message)}</p>` : ""}
+      <div class="writing-idea-grid">${ideaCards}</div>
+    </section>
+  `;
+}
+
 function articleSubSection(title, body) {
   return `
     <div class="article-subsection">
@@ -7771,6 +8072,131 @@ function articleTextListSubSection(title, items) {
       <ul>${list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     </div>
   `;
+}
+
+function renderGeneratedArticlePage() {
+  if (!els.generatedArticlePage) {
+    return;
+  }
+  const keyword = String(state.generatedArticleSearch || "").trim().toLowerCase();
+  const articles = state.generatedArticles.filter((article) => {
+    const text = [
+      article.title,
+      article.coreViewpoint,
+      article.topicTitle,
+      article.docTitle,
+      article.source,
+      article.content,
+      ...(article.framework || []),
+    ].filter(Boolean).join(" ").toLowerCase();
+    return !keyword || text.includes(keyword);
+  });
+  const active = articles.find((item) => item.id === state.activeGeneratedArticleId) || articles[0] || null;
+  state.activeGeneratedArticleId = active?.id || "";
+  els.generatedArticlePage.innerHTML = `
+    <div class="generated-article-shell">
+      <aside class="generated-article-list">
+        <div class="generated-article-list-head">
+          <div>
+            <p class="section-kicker">Generated Articles</p>
+            <h3>生成文章</h3>
+          </div>
+          <input class="text-input" id="generatedArticleSearch" type="search" placeholder="搜索文章 / 话题 / 材料" value="${escapeHtml(state.generatedArticleSearch)}" />
+        </div>
+        <div class="generated-article-cards">
+          ${articles.length ? articles.map((article) => `
+            <button class="generated-article-card${article.id === state.activeGeneratedArticleId ? " is-active" : ""}" type="button" data-generated-article="${escapeHtml(article.id)}">
+              <strong>${escapeHtml(article.title || "未命名文章")}</strong>
+              <span>${escapeHtml(article.topicTitle || "未关联话题")}</span>
+              <small>${escapeHtml(formatDate(article.updatedAt || article.createdAt))}${isAdmin() && article.ownerEmail ? ` · ${escapeHtml(article.ownerEmail)}` : ""}</small>
+            </button>
+          `).join("") : `<p class="empty-state compact">还没有生成文章。请先在高层视角话题底部生成。</p>`}
+        </div>
+      </aside>
+      <section class="generated-article-editor">
+        ${active ? `
+          <div class="generated-editor-head">
+            <div>
+              <p class="section-kicker">Article Editor</p>
+              <h3>${escapeHtml(active.title || "未命名文章")}</h3>
+            </div>
+            <div class="generated-editor-actions">
+              <button class="mini-button" type="button" data-delete-generated-article="${escapeHtml(active.id)}">删除</button>
+              <button class="primary mini-button" type="button" data-save-generated-article="${escapeHtml(active.id)}">保存修改</button>
+            </div>
+          </div>
+          <div class="topic-meta source-meta">
+            <span class="pill">来源材料：${escapeHtml(active.docTitle || "未提及")}</span>
+            <span class="pill">来源话题：${escapeHtml(active.topicTitle || "未提及")}</span>
+            <span class="pill">生成时间：${escapeHtml(formatDate(active.createdAt))}</span>
+          </div>
+          <label class="config-field generated-field">
+            <span>文章标题</span>
+            <input class="text-input" id="generatedArticleTitle" value="${escapeHtml(active.title || "")}" />
+          </label>
+          <label class="config-field generated-field">
+            <span>文章核心观点</span>
+            <textarea class="text-input" id="generatedArticleCore" rows="3">${escapeHtml(active.coreViewpoint || "")}</textarea>
+          </label>
+          <label class="config-field generated-field">
+            <span>文章框架（每行一个小节）</span>
+            <textarea class="text-input" id="generatedArticleFramework" rows="5">${escapeHtml((active.framework || []).join("\n"))}</textarea>
+          </label>
+          <label class="config-field generated-field">
+            <span>正文内容（Markdown）</span>
+            <textarea class="text-input generated-content-editor" id="generatedArticleContent" rows="22">${escapeHtml(active.content || "")}</textarea>
+          </label>
+        ` : `<p class="empty-state">选择左侧文章后进行编辑。</p>`}
+      </section>
+    </div>
+  `;
+  els.generatedArticlePage.querySelector("#generatedArticleSearch")?.addEventListener("input", (event) => {
+    state.generatedArticleSearch = event.target.value;
+    renderGeneratedArticlePage();
+  });
+  els.generatedArticlePage.querySelectorAll("[data-generated-article]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeGeneratedArticleId = button.dataset.generatedArticle;
+      renderGeneratedArticlePage();
+    });
+  });
+  els.generatedArticlePage.querySelector("[data-save-generated-article]")?.addEventListener("click", async (event) => {
+    const article = state.generatedArticles.find((item) => item.id === event.currentTarget.dataset.saveGeneratedArticle);
+    if (!article) {
+      return;
+    }
+    const ok = await confirmAction({
+      title: "保存生成文章",
+      message: "确认保存对这篇生成文章的修改吗？",
+      confirmText: "确认保存",
+    });
+    if (!ok) {
+      return;
+    }
+    const updated = {
+      ...article,
+      title: els.generatedArticlePage.querySelector("#generatedArticleTitle")?.value.trim() || article.title,
+      coreViewpoint: els.generatedArticlePage.querySelector("#generatedArticleCore")?.value.trim() || "",
+      framework: (els.generatedArticlePage.querySelector("#generatedArticleFramework")?.value || "")
+        .split(/\n+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      content: els.generatedArticlePage.querySelector("#generatedArticleContent")?.value || "",
+      updatedAt: new Date().toISOString(),
+    };
+    await saveGeneratedArticle(updated);
+  });
+  els.generatedArticlePage.querySelector("[data-delete-generated-article]")?.addEventListener("click", async (event) => {
+    const ok = await confirmAction({
+      title: "删除生成文章",
+      message: "确认删除这篇生成文章吗？删除后无法在当前页面恢复。",
+      confirmText: "确认删除",
+      tone: "danger",
+    });
+    if (ok) {
+      await deleteGeneratedArticle(event.currentTarget.dataset.deleteGeneratedArticle);
+    }
+  });
 }
 
 function renderDocumentLibrary() {
@@ -9637,6 +10063,7 @@ function switchStudyView(viewName) {
     overview: "analysis",
     topics: "analysis",
     materialOverview: "materialOverview",
+    generatedArticles: "generatedArticles",
     upload: "upload",
     materialLibrary: "materialLibrary",
     library: "library",
@@ -10116,6 +10543,9 @@ els.moduleTabs.forEach((tab) => {
         }
         if (tab.dataset.studyView === "materialLibrary") {
           renderAnalyzedMaterialList();
+        }
+        if (tab.dataset.studyView === "generatedArticles") {
+          renderGeneratedArticlePage();
         }
       }
     });

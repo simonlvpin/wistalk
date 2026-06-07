@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Wistalk</title>
-    <link rel="stylesheet" href="./styles.css?v=1.8.38" />
+    <link rel="stylesheet" href="./styles.css?v=1.8.39" />
   </head>
   <body>
     <section class="auth-screen" id="authScreen" aria-label="用户登录注册">
@@ -70,6 +70,7 @@
             <div class="sub-nav">
               <button class="module-tab" data-module="learning" data-study-view="materialOverview" data-short="材" type="button">材料列表</button>
               <button class="module-tab" data-module="learning" data-study-view="topicsHome" data-short="话" type="button">话题列表</button>
+              <button class="module-tab" data-module="learning" data-study-view="generatedArticles" data-short="文" type="button">生成文章</button>
               <button class="module-tab" data-module="learning" data-study-view="upload" data-short="传" type="button">材料上传</button>
               <button class="module-tab" data-module="learning" data-study-view="materialLibrary" data-short="管" type="button">材料管理</button>
             </div>
@@ -198,6 +199,10 @@
               </section>
             </section>
 
+            <section class="study-view" id="generatedArticlesView">
+              <section class="generated-article-page" id="generatedArticlePage" aria-label="生成文章管理"></section>
+            </section>
+
             <section class="study-view" id="analysisView">
               <div class="overview-grid">
                 <section class="summary-band">
@@ -294,6 +299,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=1.8.38"></script>
+    <script src="./app.js?v=1.8.39"></script>
   </body>
 </html>
