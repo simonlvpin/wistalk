@@ -977,8 +977,8 @@ input:focus-visible {
 
 .material-overview-page {
   display: grid;
-  gap: 14px;
-  padding: 0 18px 18px;
+  gap: 12px;
+  padding: 0 8px 16px;
 }
 
 .material-list-filters {
@@ -1006,8 +1006,8 @@ input:focus-visible {
 
 .material-overview-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
@@ -1678,7 +1678,7 @@ textarea {
 
 .workspace {
   min-width: 0;
-  padding: 10px clamp(18px, 3vw, 36px) 18px;
+  padding: 8px clamp(8px, 1.4vw, 18px) 16px;
 }
 
 .topbar {
@@ -1961,7 +1961,7 @@ textarea {
 }
 
 .topic-home-panel {
-  padding: 0 18px 18px;
+  padding: 0 8px 16px;
 }
 
 .topic-filters {
@@ -1977,8 +1977,8 @@ textarea {
 
 .topic-home-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
@@ -2619,8 +2619,8 @@ textarea {
 
 .generated-article-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
@@ -3060,8 +3060,8 @@ textarea {
 
 .topics-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(240px, 310px) minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
