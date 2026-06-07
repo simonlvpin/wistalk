@@ -97,6 +97,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.36", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料脑图与话题脑图区分", changes: ["材料页的知识脑图改为文章全局脑图，展示全文主线、主题分类、案例场景、话题地图和金句标签。", "话题脑图保留单个话题内部结构，和材料脑图分开展示。", "材料脑图中的话题节点支持穿透到对应话题解析或话题脑图。"] },
   { version: "v1.8.35", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "高层案例场景拆解增强", changes: ["高层视角 SKILL 升级为案例场景驱动：先识别独立案例，再逐个反向生成学习话题。", "识别到“案例 1、案例 2”等连续案例结构时，话题数量不得明显少于案例数量。", "高层长文分析提高模型输出预算，减少大模型因输出过长而合并话题。"] },
   { version: "v1.8.34", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图交互优化", changes: ["脑图节点展示标题和一句话内容摘要，导出后也能看清节点含义。", "点击脑图节点改为局部更新详情，避免画布滚动位置跳回顶部。", "右侧详情支持点击父级节点返回，并将 PDF 导出改为直接生成下载。"] },
   { version: "v1.8.33", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "导航收缩与脑图全页面", changes: ["左侧导航增加收缩和展开按钮，收缩后主内容区域自动变宽。", "知识脑图增加全页面查看模式。", "脑图节点尺寸和文字字号收紧，默认可看到更多节点内容。"] },
@@ -5812,10 +5813,10 @@ function renderMaterialOverviewPage() {
   const isMeetingNotes = activeDoc ? activeMaterialTypeKind === "meeting" || Boolean(activeAnalysis?.meetingAnalysis) : false;
   const isTrainingSpeech = activeDoc ? activeMaterialTypeKind === "training" || Boolean(activeAnalysis?.trainingAnalysis) : false;
   const activeMaterialPane = isMeetingNotes
-    ? (["meeting", "source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
+    ? (["meeting", "source", "topics", "mindmap", "topicMindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
     : isTrainingSpeech
-      ? (["training", "source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
-      : (["topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "source");
+      ? (["training", "source", "topics", "mindmap", "topicMindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
+      : (["source", "topics", "mindmap", "topicMindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "source");
   const activeTopic = activeDoc ? topics[state.activeMaterialTopicIndex] : null;
   const activeDocForTopic = activeDoc && activeAnalysis ? { ...activeDoc, analysis: activeAnalysis } : activeDoc;
   const row = activeDocForTopic && activeTopic ? materialTopicRow(activeDocForTopic, activeTopic, state.activeMaterialTopicIndex) : null;
@@ -5912,12 +5913,17 @@ function renderMaterialOverviewPage() {
               ${isTrainingSpeech ? `<button class="topic-detail-tab${activeMaterialPane === "training" ? " is-active" : ""}" type="button" data-material-pane="training">培训分析</button>` : ""}
               <button class="topic-detail-tab${activeMaterialPane === "source" ? " is-active" : ""}" type="button" data-material-pane="source">资料原文</button>
               <button class="topic-detail-tab${activeMaterialPane === "topics" ? " is-active" : ""}" type="button" data-material-pane="topics">话题内容</button>
-              ${row ? `<button class="topic-detail-tab${activeMaterialPane === "mindmap" ? " is-active" : ""}" type="button" data-material-pane="mindmap">知识脑图</button>` : ""}
+              <button class="topic-detail-tab${activeMaterialPane === "mindmap" ? " is-active" : ""}" type="button" data-material-pane="mindmap">文章脑图</button>
+              ${row ? `<button class="topic-detail-tab${activeMaterialPane === "topicMindmap" ? " is-active" : ""}" type="button" data-material-pane="topicMindmap">话题脑图</button>` : ""}
             </div>
           </div>
           ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis, activeDoc, activeSkillVersion) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : activeMaterialPane === "mindmap" ? `
             <article class="topic-article material-topic-article">
-              ${row ? buildMindMapHtml(activeTopic, row) : `<p class="empty-state compact">这份材料没有可展示的知识脑图。</p>`}
+              ${activeAnalysis ? buildMaterialMindMapHtml(activeDoc, activeAnalysis) : `<p class="empty-state compact">这份材料没有可展示的文章脑图。</p>`}
+            </article>
+          ` : activeMaterialPane === "topicMindmap" ? `
+            <article class="topic-article material-topic-article">
+              ${row ? buildMindMapHtml(activeTopic, row) : `<p class="empty-state compact">请选择一个话题查看话题脑图。</p>`}
             </article>
           ` : `
             <div class="material-topic-nav">
@@ -6066,7 +6072,16 @@ function renderMaterialOverviewPage() {
       renderMaterialOverviewPage();
     });
   });
-  bindMindMapInteractions(els.materialOverviewPage, () => renderMaterialOverviewPage(), activeTopic, row);
+  const materialMindRoot = activeMaterialPane === "mindmap" && activeDoc && activeAnalysis
+    ? buildMaterialMindMapData(activeDoc, activeAnalysis)
+    : null;
+  bindMindMapInteractions(
+    els.materialOverviewPage,
+    () => renderMaterialOverviewPage(),
+    activeMaterialPane === "topicMindmap" ? activeTopic : null,
+    activeMaterialPane === "topicMindmap" ? row : null,
+    materialMindRoot,
+  );
   els.materialOverviewPage.querySelectorAll("[data-rich-command]").forEach((button) => {
     button.addEventListener("click", () => {
       const editor = els.materialOverviewPage.querySelector("[data-training-note-editor]");
@@ -6340,8 +6355,9 @@ function compactText(value, fallback = "未提及") {
   return String(value || "").trim() || fallback;
 }
 
-function createMindNode(id, title, content, children = []) {
+function createMindNode(id, title, content, children = [], meta = {}) {
   return {
+    ...meta,
     id,
     title: String(title || "未命名节点"),
     content: compactText(content),
@@ -6462,6 +6478,99 @@ function buildMindMapData(topic, row = null) {
     : buildStandardMindMap(topic);
 }
 
+function extractExecutiveCaseScenes(text = "") {
+  const source = String(text || "");
+  const regex = /(^|\n)\s*案例\s*([一二三四五六七八九十百千万\d]+)\s*[：:]\s*([^\n]+)/g;
+  const scenes = [];
+  let match;
+  while ((match = regex.exec(source)) !== null) {
+    const rawNo = String(match[2] || "").trim();
+    scenes.push({
+      caseNo: rawNo,
+      caseTitle: String(match[3] || "").trim(),
+    });
+  }
+  return scenes;
+}
+
+function topicIndexForCaseScene(topics = [], caseNo = "") {
+  const escaped = String(caseNo || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!escaped) {
+    return -1;
+  }
+  const regex = new RegExp(`案例\\s*${escaped}(?!\\d)`, "i");
+  return topics.findIndex((topic) => {
+    const text = [
+      topic.title,
+      topic.sourceSummary,
+      topic.surfacePhenomenon,
+      ...(Array.isArray(topic.evidence) ? topic.evidence : []),
+    ].filter(Boolean).join(" ");
+    return regex.test(text);
+  });
+}
+
+function buildMaterialMindMapData(doc, analysis) {
+  const topics = Array.isArray(analysis?.topics) ? analysis.topics : [];
+  const categories = Array.isArray(analysis?.activeCategories) ? analysis.activeCategories : [];
+  const caseScenes = extractExecutiveCaseScenes(doc?.rawText || analysis?.text || "");
+  const topicNodes = topics.map((topic, index) => createMindNode(
+    `topic-${index}`,
+    topic.title || `话题${index + 1}`,
+    [
+      `话题来源：${topic.sourceSummary || "未提及"}`,
+      `核心问题：${topic.problemEssence || topic.essence || topic.trainingTopic?.coreViewpoint || "未提及"}`,
+      `话题标签：${normalizeProblemTypes(topic.problemTypes, topic.categoryName, topic.category?.name).join(" / ")}`,
+    ],
+    [],
+    { topicIndex: index },
+  ));
+  const caseNodes = caseScenes.map((scene, index) => {
+    const topicIndex = topicIndexForCaseScene(topics, scene.caseNo);
+    const topic = topicIndex >= 0 ? topics[topicIndex] : null;
+    return createMindNode(
+      `case-${index}`,
+      `案例${scene.caseNo}：${scene.caseTitle}`,
+      [
+        `案例场景：${scene.caseTitle}`,
+        topic ? `关联话题：${topic.title}` : "关联话题：暂未匹配到对应话题，可先刷新到最新 SKILL 重新拆解。",
+        topic ? `核心问题：${topic.problemEssence || topic.essence || "未提及"}` : "",
+      ],
+      [],
+      topic ? { topicIndex } : {},
+    );
+  });
+  const categoryNodes = categories.slice(0, 8).map((group, index) => createMindNode(
+    `category-${index}`,
+    group.category?.name || `主题${index + 1}`,
+    `该主题下识别到 ${group.items?.length || 0} 条关键表达。`,
+    (group.items || []).slice(0, 4).map((item, itemIndex) => createMindNode(
+      `category-${index}-${itemIndex}`,
+      `关键表达${itemIndex + 1}`,
+      item.text || item,
+    )),
+  ));
+  const quoteNodes = (analysis?.quotes || []).slice(0, 6).map((quote, index) => createMindNode(
+    `quote-${index}`,
+    `金句${index + 1}`,
+    quote,
+  ));
+  return createMindNode(doc?.id || "material-root", doc?.title || doc?.fileName || "整篇材料", [
+    `一句话概括：${analysis?.overview?.oneLine || "未提及"}`,
+    `逻辑主线：${analysis?.overview?.logicLine || "未提及"}`,
+    `材料规模：${analysis?.overview?.wordCount || 0} 字，${topics.length} 个话题${caseScenes.length ? `，${caseScenes.length} 个案例场景` : ""}`,
+  ], [
+    createMindNode("material-overview", "全文主线", [
+      `一句话概括：${analysis?.overview?.oneLine || "未提及"}`,
+      `逻辑主线：${analysis?.overview?.logicLine || "未提及"}`,
+    ]),
+    caseNodes.length ? createMindNode("material-cases", "案例场景", `全文识别到 ${caseNodes.length} 个独立案例场景。`, caseNodes) : null,
+    createMindNode("material-topics", "话题地图", `全文拆解出 ${topics.length} 个可学习话题，点击具体话题可穿透查看。`, topicNodes),
+    categoryNodes.length ? createMindNode("material-categories", "主题分类", "按原文观点和话题类型归纳全文主题。", categoryNodes) : null,
+    quoteNodes.length ? createMindNode("material-quotes", "金句标签", "原文中值得反复学习的关键表达。", quoteNodes) : null,
+  ]);
+}
+
 function flattenMindMapNodes(root) {
   const nodes = [];
   const visit = (node, parent = null) => {
@@ -6568,18 +6677,24 @@ function buildMindMapDetailHtml(root, selectedId) {
   const allNodes = flattenMindMapNodes(root);
   const selected = allNodes.find((node) => node.id === selectedId) || allNodes[0] || root;
   const parent = selected.parentId ? allNodes.find((node) => node.id === selected.parentId) : null;
+  const hasLinkedTopic = selected.topicIndex !== undefined && selected.topicIndex !== null;
   return `
     <div class="knowledge-map-parent-row">
       ${parent ? `<button class="knowledge-map-parent-link" type="button" data-mind-node="${escapeHtml(parent.id)}" title="查看上一级：${escapeHtml(parent.title)}">${escapeHtml(parent.title)}</button>` : `<span class="section-kicker">知识脑图</span>`}
     </div>
     <h4>${escapeHtml(selected.title)}</h4>
     <p>${escapeHtml(selected.content || "暂无节点内容。")}</p>
+    ${hasLinkedTopic ? `
+      <div class="knowledge-map-node-actions">
+        <button class="mini-button" type="button" data-mind-topic-analysis="${escapeHtml(String(selected.topicIndex))}">查看话题解析</button>
+        <button class="mini-button" type="button" data-mind-topic-map="${escapeHtml(String(selected.topicIndex))}">查看话题脑图</button>
+      </div>
+    ` : ""}
     ${(selected.children || []).length ? `<div class="knowledge-map-child-list"><strong>子节点</strong>${selected.children.map((child) => `<button type="button" data-mind-node="${escapeHtml(child.id)}">${escapeHtml(mindMapNodeLabel(child))}</button>`).join("")}</div>` : ""}
   `;
 }
 
-function buildMindMapHtml(topic, row = null) {
-  const root = buildMindMapData(topic, row);
+function buildMindMapShellHtml(root, label = "Knowledge Map") {
   const allNodes = flattenMindMapNodes(root);
   const selectedId = allNodes.some((node) => node.id === state.mindMapSelectedNodeId) ? state.mindMapSelectedNodeId : root.id;
   const layout = layoutMindMap(root);
@@ -6588,7 +6703,7 @@ function buildMindMapHtml(topic, row = null) {
     <section class="knowledge-map${state.mindMapFullscreen ? " is-fullscreen" : ""}" data-mind-map>
       <div class="knowledge-map-toolbar">
         <div>
-          <p class="section-kicker">Knowledge Map</p>
+          <p class="section-kicker">${escapeHtml(label)}</p>
           <h3>${escapeHtml(root.title)}</h3>
         </div>
         <div class="knowledge-map-actions">
@@ -6619,8 +6734,33 @@ function buildMindMapHtml(topic, row = null) {
   `;
 }
 
-function bindMindMapInteractions(rootEl, rerender, topic = null, row = null) {
-  const mindRoot = topic ? buildMindMapData(topic, row) : null;
+function buildMindMapHtml(topic, row = null) {
+  return buildMindMapShellHtml(buildMindMapData(topic, row), "Topic Knowledge Map");
+}
+
+function buildMaterialMindMapHtml(doc, analysis) {
+  return buildMindMapShellHtml(buildMaterialMindMapData(doc, analysis), "Article Knowledge Map");
+}
+
+function bindMindMapInteractions(rootEl, rerender, topic = null, row = null, rootOverride = null) {
+  const mindRoot = rootOverride || (topic ? buildMindMapData(topic, row) : null);
+  const bindTopicActionButtons = () => {
+    rootEl.querySelectorAll("[data-mind-topic-analysis], [data-mind-topic-map]").forEach((button) => {
+      if (button.dataset.mindTopicBound === "true") {
+        return;
+      }
+      button.dataset.mindTopicBound = "true";
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const topicIndex = Number(button.dataset.mindTopicAnalysis ?? button.dataset.mindTopicMap ?? 0);
+        state.activeMaterialTopicIndex = topicIndex;
+        state.activeMaterialPane = button.dataset.mindTopicMap !== undefined ? "topicMindmap" : "topics";
+        state.mindMapSelectedNodeId = "";
+        state.mindMapCollapsedNodeIds = [];
+        rerender();
+      });
+    });
+  };
   const selectNode = (nodeId) => {
     state.mindMapSelectedNodeId = nodeId;
     if (!mindRoot) {
@@ -6634,6 +6774,7 @@ function bindMindMapInteractions(rootEl, rerender, topic = null, row = null) {
     }
     updateMindMapSelection(rootEl, mindRoot, nodeId);
     bindNodeButtons();
+    bindTopicActionButtons();
   };
   const bindNodeButtons = () => {
     rootEl.querySelectorAll("[data-mind-node]").forEach((node) => {
@@ -6648,6 +6789,7 @@ function bindMindMapInteractions(rootEl, rerender, topic = null, row = null) {
     });
   };
   bindNodeButtons();
+  bindTopicActionButtons();
   rootEl.querySelectorAll("[data-mind-collapse]").forEach((node) => {
     node.addEventListener("click", (event) => {
       event.stopPropagation();
