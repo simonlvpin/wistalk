@@ -97,6 +97,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.35", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "高层案例场景拆解增强", changes: ["高层视角 SKILL 升级为案例场景驱动：先识别独立案例，再逐个反向生成学习话题。", "识别到“案例 1、案例 2”等连续案例结构时，话题数量不得明显少于案例数量。", "高层长文分析提高模型输出预算，减少大模型因输出过长而合并话题。"] },
   { version: "v1.8.34", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图交互优化", changes: ["脑图节点展示标题和一句话内容摘要，导出后也能看清节点含义。", "点击脑图节点改为局部更新详情，避免画布滚动位置跳回顶部。", "右侧详情支持点击父级节点返回，并将 PDF 导出改为直接生成下载。"] },
   { version: "v1.8.33", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "导航收缩与脑图全页面", changes: ["左侧导航增加收缩和展开按钮，收缩后主内容区域自动变宽。", "知识脑图增加全页面查看模式。", "脑图节点尺寸和文字字号收紧，默认可看到更多节点内容。"] },
   { version: "v1.8.32", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图页面", changes: ["话题详情新增知识脑图标签页。", "脑图节点支持点击查看对应内容，并支持节点收起、展开和缩放。", "知识脑图支持导出为图片，也可打开打印流程导出为 PDF。"] },
@@ -198,10 +199,13 @@ const DEFAULT_TOPIC_SKILL_PROMPT = `# 高层视角话题拆解 SKILL.md
 你要把一份高层视角材料拆解为若干个“可学习的话题文章”。
 每个话题必须来自原文，每个话题只解决一个核心问题。
 不要把材料简单摘要成观点清单，而要把高层表达背后的管理问题、底层矛盾、关键动作和可迁移启示拆出来。
+如果材料本身是案例复盘、组织变革实录、经营案例集、案例 1/案例 2 这类结构，必须采用“案例场景驱动”的拆解方式：先识别每一个独立案例场景，再围绕每个案例反向提炼一个核心管理问题。
 
 ## 3. 输入理解规则
 - 先通读全文，识别讲话对象、业务场景、关键矛盾、管理动作和反复出现的关键词。
 - 区分三类内容：核心判断、支撑案例、情绪表达。话题优先来自核心判断和关键管理动作。
+- 对案例复盘类材料，支撑案例不只是观点的证据，而是话题生成的基本单元。每个独立案例、故事、业务试错、组织变革动作，都要先作为候选话题登记。
+- 如果原文明确出现“十五大案例”“案例 1：”“案例 2：”等连续结构，要逐一识别案例编号、案例名称、关键矛盾和组织动作，不得把多个案例合并成一个宏观话题。
 - 不要因为系统预设了战略、组织、数字化、AI、数据、领导力等分类，就强行套分类。分类必须服从原文。
 - 如果原文没有直接或间接依据，不允许生成对应话题。
 
@@ -210,7 +214,11 @@ const DEFAULT_TOPIC_SKILL_PROMPT = `# 高层视角话题拆解 SKILL.md
 - 标题中尽量保留原文里的具体名词、业务对象、组织场景或管理动作。
 - 每个话题至少提供 2 条原文证据，证据必须能直接支撑这个话题。
 - 一个话题只处理一个核心问题，不要把战略、组织、数据、AI 全部塞进一个话题。
-- 优先抽取 4-8 个高质量话题；材料很短时可以少于 4 个，但不要凑数。
+- 普通短讲话优先抽取 4-8 个高质量话题；但案例复盘类、长篇组织变革实录、经营案例集不能套用 4-8 个限制。
+- 若材料明确包含 N 个独立案例场景，原则上输出 N 个话题；如果某个案例内部有两个相互独立的故事，也可以拆成 N+ 个话题。
+- 对“十五大案例实录”这类材料，通常应该输出 15 个左右话题；少于案例数量时，必须说明哪个案例没有形成话题以及原因。
+- 不要为了追求“主题统一”把多个案例合并成“组织隔离”“战略拉通”这类大话题。可以让多个话题共享标签，但话题本身必须保留案例边界。
+- 话题生成顺序应尽量与原文案例顺序一致，便于用户从材料列表回到原文学习。
 
 ## 5. 话题文章标准结构
 每个话题文章必须按以下模块组织：
@@ -265,6 +273,9 @@ const DEFAULT_TOPIC_SKILL_PROMPT = `# 高层视角话题拆解 SKILL.md
 - 语言必须中文，表达要像一篇可学习的管理文章，不要像机器摘要。
 - 不允许出现“这篇讲话围绕若干维度建立机制”这类空泛句。
 - 不允许脱离话题标题发散成通用管理文章。
+- 对案例场景驱动的话题，sourceSummary 必须写清楚“来自案例 X：案例名称/业务场景”，不能只写“来自组织变革相关内容”。
+- 对案例场景驱动的话题，surfacePhenomenon 必须还原该案例中的具体矛盾、组织动作、结果或复盘坑点。
+- 若多个案例都属于同一管理主题，也必须分别形成多个话题，因为用户学习的是不同场景下的具体解法，而不是抽象主题归纳。
 - 不允许编造原文没有的事实、组织名称、数字或事件。
 - 如果引用案例，必须说明它是案例对照，不要伪装成原文事实。
 - 任何判断都要能回到原文证据。
@@ -272,6 +283,7 @@ const DEFAULT_TOPIC_SKILL_PROMPT = `# 高层视角话题拆解 SKILL.md
 ## 7. 输出 JSON 约束
 - 必须严格输出系统要求的 JSON。
 - topics 中每个话题都要包含 evidence、sourceSummary、problemEssence、surfacePhenomenon、deepNature、ceoSolution、theoryAnchors、caseComparison、moreSolutions、transferableInsights。
+- 若输出 caseScenes 字段，它应列出识别到的独立案例场景：caseNo、caseTitle、coreConflict、managementAction、topicTitle。caseScenes 主要用于自检，topics 仍然是前端学习的主内容。
 - quotes 只选择原文中最值得反复学习的句子。
 - suggestedTags 必须是便于后续检索的短标签。`;
 
@@ -440,15 +452,15 @@ const DEFAULT_TRAINING_SKILL_PROMPT = `# 培训讲话分析 SKILL.md
 const DEFAULT_TOPIC_SKILL = {
   id: "topic-skill-default-v1",
   name: skillNameForMaterialTypeName("高层视角"),
-  version: "v1.0",
-  versionNumber: 1,
-  summary: `面向高层视角材料的标准${skillFileNameForMaterialTypeName("高层视角")}，用原文证据抽取可学习的问题文章。`,
+  version: "v1.2",
+  versionNumber: 3,
+  summary: `面向高层视角材料的标准${skillFileNameForMaterialTypeName("高层视角")}，支持案例场景驱动拆解，避免把多案例长文合并成少量大主题。`,
   prompt: DEFAULT_TOPIC_SKILL_PROMPT,
   targetMaterialTypeId: "type-executive-view",
   targetMaterialTypeName: "高层视角",
   skillFileName: skillFileNameForMaterialTypeName("高层视角"),
-  changeLog: ["初始版本：建立高层视角材料的话题抽取、证据约束和文章组织标准。"],
-  createdAt: "2026-05-28T00:00:00+08:00",
+  changeLog: ["v1.2：新增案例场景驱动拆解规则，要求先识别独立案例，再逐个生成可学习话题；多案例长文不再套用 4-8 个话题限制。"],
+  createdAt: "2026-06-07T13:45:00+08:00",
   isPreset: true,
 };
 const THEMES = [
@@ -4434,6 +4446,7 @@ ${text}
 {
   "overview": {"oneLine": "", "logicLine": "", "wordCount": 0},
   "categories": [{"name": "", "colorHint": "", "sentences": []}],
+  "caseScenes": [{"caseNo": 1, "caseTitle": "", "coreConflict": "", "managementAction": "", "topicTitle": ""}],
   "topics": [{
     "index": 1,
     "title": "",
@@ -4496,8 +4509,13 @@ ${text}
 15. quotes 选最值得反复学习的原文句子，最多10条。
 16. categories 至少输出3个，最多8个。
 17. suggestedTags 输出最核心的标签。
-	18. 语言必须中文，内容必须贴合原文，不要编造不存在的事实。${skillInstruction}
-  19. 这个讲话的原文如下：
+18. 如果原文是案例复盘、案例实录、组织变革全景复盘，必须先输出 caseScenes，逐一列出识别到的独立案例场景。caseScenes 的数量应与原文“案例 X”数量一致。
+19. 对案例场景型材料，topics 必须按 caseScenes 逐个生成：一个独立案例场景至少生成一个 topic。比如原文写明“十五大案例”或出现“案例 1”到“案例 15”，topics 通常必须输出 15 个左右，不能只输出 4-8 个宏观主题。
+20. 对案例场景型材料，topic.sourceSummary 必须写成“来自案例X：……”；topic.title 必须保留该案例里的具体组织场景、业务对象或管理动作。
+21. 如果多个案例都属于“组织隔离/组织融合/行业化”等同一主题，也不能合并。可以共用标签，但要分别形成不同话题。
+22. 只有当某个案例完全没有可学习的管理问题时，才允许不生成对应 topic；但必须在 caseScenes 的 topicTitle 中写“未形成话题：原因”。
+23. 语言必须中文，内容必须贴合原文，不要编造不存在的事实。${skillInstruction}
+  24. 这个讲话的原文如下：
 ${text}
       `.trim(),
     },
@@ -4518,7 +4536,7 @@ function parseJsonFromText(content) {
 
 function normalizeDeepSeekAnalysis(raw, sourceText) {
   sanitizeDeepSeekTopics(raw);
-  validateDeepSeekAnalysis(raw);
+  validateDeepSeekAnalysis(raw, sourceText);
   const fallback = analyzeText(sourceText);
   const categories = Array.isArray(raw?.categories) ? raw.categories : [];
   const categoryMap = new Map(categoryDefs.map((item) => [item.name, item]));
@@ -4689,7 +4707,7 @@ function sanitizeDeepSeekTopics(raw) {
   }
 }
 
-function validateDeepSeekAnalysis(raw) {
+function validateDeepSeekAnalysis(raw, sourceText = "") {
   const oneLine = String(raw?.overview?.oneLine || "").trim();
   const logicLine = String(raw?.overview?.logicLine || "").trim();
   if (!oneLine || !logicLine) {
@@ -4705,6 +4723,11 @@ function validateDeepSeekAnalysis(raw) {
   const hasTrainingAnalysis = Boolean(raw?.trainingAnalysis && typeof raw.trainingAnalysis === "object");
   if (!hasMeetingAnalysis && !hasTrainingAnalysis && (!Array.isArray(raw?.topics) || raw.topics.length < 1)) {
     throw new Error("DeepSeek 没有返回可学习的话题。");
+  }
+  const executiveCaseCount = (!hasMeetingAnalysis && !hasTrainingAnalysis) ? countExecutiveCaseScenes(sourceText) : 0;
+  const returnedTopicCount = Array.isArray(raw?.topics) ? raw.topics.length : 0;
+  if (executiveCaseCount >= 8 && returnedTopicCount < executiveCaseCount) {
+    throw new Error(`DeepSeek 识别到这类材料应按案例场景逐一拆解：原文包含 ${executiveCaseCount} 个“案例 X”场景，但只返回 ${returnedTopicCount} 个话题。请使用最新高层视角 SKILL 重新执行，避免把多个案例合并成少量宏观主题。`);
   }
   const hasSoftAnalysis = hasMeetingAnalysis || hasTrainingAnalysis;
   const weakTopic = hasSoftAnalysis ? null : (raw.topics || []).find((topic) => !Array.isArray(topic?.evidence) || topic.evidence.length < 2);
@@ -4891,9 +4914,37 @@ function normalizeTrainingTopic(input = null) {
   };
 }
 
+function countExecutiveCaseScenes(text = "") {
+  const source = String(text || "");
+  const matches = source.match(/(^|\n)\s*案例\s*[一二三四五六七八九十百千万\d]+\s*[：:]/g) || [];
+  return matches.length;
+}
+
+function defaultAnalysisMaxTokens(text = "", skill = currentTopicSkill()) {
+  const typeName = skill?.targetMaterialTypeName || "高层视角";
+  const typeId = skill?.targetMaterialTypeId || "type-executive-view";
+  const kind = materialTypeKind(typeId, typeName);
+  if (kind === "training") {
+    return 24000;
+  }
+  if (kind === "meeting") {
+    return 16000;
+  }
+  const caseCount = countExecutiveCaseScenes(text);
+  if (caseCount >= 8) {
+    return Math.min(32000, Math.max(18000, caseCount * 1800));
+  }
+  return 16000;
+}
+
 async function analyzeWithDeepSeek(text, options = {}) {
   const settings = readDeepSeekSettings();
-  const payload = await callDeepSeek(settings, buildDeepSeekPrompt(text, options.skill || currentTopicSkill()), options);
+  const skill = options.skill || currentTopicSkill();
+  const payload = await callDeepSeek(settings, buildDeepSeekPrompt(text, skill), {
+    ...options,
+    skill,
+    maxTokens: options.maxTokens || defaultAnalysisMaxTokens(text, skill),
+  });
   const content = payload?.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error("DeepSeek 没有返回分析结果。");
