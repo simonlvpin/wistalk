@@ -34,11 +34,13 @@
   topicFavoriteOnly: false,
   topicPage: 1,
   topicPageSize: 20,
+  sidebarCollapsed: false,
   activeTopicRef: null,
   activeTopicPane: "analysis",
   mindMapSelectedNodeId: "",
   mindMapCollapsedNodeIds: [],
   mindMapZoom: 1,
+  mindMapFullscreen: false,
   activeOriginalKeyword: "",
   activeMaterialPane: "source",
   materialSearchComposing: false,
@@ -95,6 +97,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.33", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "导航收缩与脑图全页面", changes: ["左侧导航增加收缩和展开按钮，收缩后主内容区域自动变宽。", "知识脑图增加全页面查看模式。", "脑图节点尺寸和文字字号收紧，默认可看到更多节点内容。"] },
   { version: "v1.8.32", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图页面", changes: ["话题详情新增知识脑图标签页。", "脑图节点支持点击查看对应内容，并支持节点收起、展开和缩放。", "知识脑图支持导出为图片，也可打开打印流程导出为 PDF。"] },
   { version: "v1.8.31", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训弱话题容错", changes: ["培训和会议分析遇到证据不足的话题时自动过滤，不再让整份材料刷新失败。", "培训 SKILL 默认版本升级到 v1.5，禁止把课程预告、转场和下一节安排强行生成知识点话题。", "被过滤的话题会写入 topicExtractionNote，便于回看模型输出问题。"] },
   { version: "v1.8.30", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "SKILL 版本去重修复", changes: ["话题 SKILL 版本列表按资料类型和版本号去重。", "最新版判断改为按 v1.x 语义版本排序，避免旧自定义版本压过系统新版。", "发布新 SKILL 时会基于当前最大版本生成下一个版本号。"] },
@@ -638,6 +641,8 @@ const els = {
   topicOwnerOptions: document.querySelector("#topicOwnerOptions"),
   newMaterialBtn: document.querySelector("#newMaterialBtn"),
   topNewMaterialBtn: document.querySelector("#topNewMaterialBtn"),
+  appShell: document.querySelector(".app-shell"),
+  sidebarToggle: document.querySelector("#sidebarToggle"),
   analyzedMaterialList: document.querySelector("#analyzedMaterialList"),
   deleteAnalyzedMaterialsBtn: document.querySelector("#deleteAnalyzedMaterialsBtn"),
   userBadge: document.querySelector("#userBadge"),
@@ -6395,10 +6400,10 @@ function layoutMindMap(root) {
   const collapsed = new Set(state.mindMapCollapsedNodeIds || []);
   const nodes = [];
   const edges = [];
-  const nodeWidth = 220;
-  const nodeHeight = 58;
-  const depthGap = 280;
-  const rowGap = 92;
+  const nodeWidth = 184;
+  const nodeHeight = 46;
+  const depthGap = 226;
+  const rowGap = 68;
   let leafIndex = 0;
   let maxDepth = 0;
   const place = (node, depth, parent = null) => {
@@ -6407,10 +6412,10 @@ function layoutMindMap(root) {
     const positionedChildren = children.map((child) => place(child, depth + 1, node));
     const y = positionedChildren.length
       ? positionedChildren.reduce((sum, child) => sum + child.y, 0) / positionedChildren.length
-      : 60 + (leafIndex++ * rowGap);
+      : 48 + (leafIndex++ * rowGap);
     const positioned = {
       ...node,
-      x: 34 + (depth * depthGap),
+      x: 28 + (depth * depthGap),
       y,
       width: nodeWidth,
       height: nodeHeight,
@@ -6430,11 +6435,11 @@ function layoutMindMap(root) {
     nodes,
     edges: edges.map((edge) => ({ from: nodeById[edge.from], to: nodeById[edge.to] })).filter((edge) => edge.from && edge.to),
     width: Math.max(860, 80 + ((maxDepth + 1) * depthGap) + nodeWidth),
-    height: Math.max(320, 120 + Math.max(1, leafIndex) * rowGap),
+    height: Math.max(320, 96 + Math.max(1, leafIndex) * rowGap),
   };
 }
 
-function svgTextLines(text, maxChars = 11, maxLines = 2) {
+function svgTextLines(text, maxChars = 10, maxLines = 2) {
   const source = String(text || "").replace(/\s+/g, " ").trim();
   const lines = [];
   for (let index = 0; index < source.length && lines.length < maxLines; index += maxChars) {
@@ -6452,15 +6457,15 @@ function buildMindMapSvg(layout, selectedId) {
     const fill = node.depth === 0 ? "#2f8f8a" : selected ? "#fff7e8" : "#ffffff";
     const stroke = selected ? "#d58a24" : node.depth === 0 ? "#2f8f8a" : "#cbd7df";
     const textColor = node.depth === 0 ? "#ffffff" : "#223142";
-    const lines = svgTextLines(node.title).map((line, index) => `<tspan x="${node.x + 16}" y="${node.y + 23 + index * 18}">${escapeHtml(line)}</tspan>`).join("");
+    const lines = svgTextLines(node.title).map((line, index) => `<tspan x="${node.x + 12}" y="${node.y + 18 + index * 15}">${escapeHtml(line)}</tspan>`).join("");
     return `
       <g class="mind-map-node${selected ? " is-selected" : ""}" data-mind-node="${escapeHtml(node.id)}" role="button" tabindex="0">
-        <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 2 : 1.3}"></rect>
-        <text fill="${textColor}" font-size="14" font-weight="700">${lines}</text>
+        <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 2 : 1.2}"></rect>
+        <text fill="${textColor}" font-size="12" font-weight="700">${lines}</text>
         ${node.hasChildren ? `
           <g class="mind-map-collapse" data-mind-collapse="${escapeHtml(node.id)}">
-            <circle cx="${node.x + node.width - 17}" cy="${node.y + 17}" r="10" fill="${node.collapsed ? "#f2f6f8" : "#e8f4f3"}" stroke="${stroke}"></circle>
-            <text x="${node.x + node.width - 17}" y="${node.y + 22}" text-anchor="middle" fill="#233142" font-size="15" font-weight="800">${node.collapsed ? "+" : "-"}</text>
+            <circle cx="${node.x + node.width - 14}" cy="${node.y + 14}" r="8" fill="${node.collapsed ? "#f2f6f8" : "#e8f4f3"}" stroke="${stroke}"></circle>
+            <text x="${node.x + node.width - 14}" y="${node.y + 18}" text-anchor="middle" fill="#233142" font-size="13" font-weight="800">${node.collapsed ? "+" : "-"}</text>
           </g>
         ` : ""}
       </g>
@@ -6485,7 +6490,7 @@ function buildMindMapHtml(topic, row = null) {
   const layout = layoutMindMap(root);
   const zoom = Math.max(0.6, Math.min(1.8, Number(state.mindMapZoom || 1)));
   return `
-    <section class="knowledge-map" data-mind-map>
+    <section class="knowledge-map${state.mindMapFullscreen ? " is-fullscreen" : ""}" data-mind-map>
       <div class="knowledge-map-toolbar">
         <div>
           <p class="section-kicker">Knowledge Map</p>
@@ -6496,6 +6501,7 @@ function buildMindMapHtml(topic, row = null) {
           <span>${escapeHtml(String(Math.round(zoom * 100)))}%</span>
           <button class="mini-button" type="button" data-mind-zoom="in">放大</button>
           <button class="mini-button" type="button" data-mind-reset>重置</button>
+          <button class="mini-button" type="button" data-mind-fullscreen>${state.mindMapFullscreen ? "退出全页面" : "全页面"}</button>
           <button class="mini-button" type="button" data-mind-export="png">导出图片</button>
           <button class="mini-button" type="button" data-mind-export="pdf">导出 PDF</button>
         </div>
@@ -6548,6 +6554,10 @@ function bindMindMapInteractions(rootEl, rerender) {
     state.mindMapZoom = 1;
     state.mindMapCollapsedNodeIds = [];
     state.mindMapSelectedNodeId = "";
+    rerender();
+  });
+  rootEl.querySelector("[data-mind-fullscreen]")?.addEventListener("click", () => {
+    state.mindMapFullscreen = !state.mindMapFullscreen;
     rerender();
   });
   rootEl.querySelectorAll("[data-mind-export]").forEach((button) => {
@@ -9551,6 +9561,20 @@ els.forgotForm.addEventListener("submit", async (event) => {
 
 els.accountBtn?.addEventListener("click", () => {
   guardAnalysisNavigation(() => switchModule("config"));
+});
+
+function syncSidebarCollapsed() {
+  els.appShell?.classList.toggle("is-sidebar-collapsed", state.sidebarCollapsed);
+  if (els.sidebarToggle) {
+    const label = state.sidebarCollapsed ? "展开左侧导航" : "收缩左侧导航";
+    els.sidebarToggle.setAttribute("aria-label", label);
+    els.sidebarToggle.title = label;
+  }
+}
+
+els.sidebarToggle?.addEventListener("click", () => {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  syncSidebarCollapsed();
 });
 
 els.logoutBtn.addEventListener("click", () => guardAnalysisNavigation(async () => {
