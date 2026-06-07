@@ -2390,6 +2390,20 @@ textarea {
   white-space: pre-wrap;
 }
 
+.knowledge-map-node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.knowledge-map-node-actions .mini-button {
+  min-height: 30px;
+  border-color: #c7d8df;
+  background: #f1f8f8;
+  color: var(--teal-strong);
+}
+
 .knowledge-map-child-list {
   display: grid;
   gap: 8px;
