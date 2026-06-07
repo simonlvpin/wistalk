@@ -97,6 +97,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.38", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料页脑图入口收敛", changes: ["材料页移除单独的话题脑图入口，只保留文章层面的脑图。", "文章脑图继续展示整篇材料逻辑，并可穿透到具体话题解析。", "话题列表里的单个话题详情仍保留话题脑图能力。"] },
   { version: "v1.8.37", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "脑图脚本缓存修复", changes: ["本地页面引用 app.js 和 styles.css 时增加版本号，避免浏览器继续运行旧脚本。", "刷新页面后材料页会显示“文章脑图”和“话题脑图”两个入口。", "文章脑图用于整篇材料逻辑，话题脑图用于单个话题逻辑。"] },
   { version: "v1.8.36", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "材料脑图与话题脑图区分", changes: ["材料页的知识脑图改为文章全局脑图，展示全文主线、主题分类、案例场景、话题地图和金句标签。", "话题脑图保留单个话题内部结构，和材料脑图分开展示。", "材料脑图中的话题节点支持穿透到对应话题解析或话题脑图。"] },
   { version: "v1.8.35", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "高层案例场景拆解增强", changes: ["高层视角 SKILL 升级为案例场景驱动：先识别独立案例，再逐个反向生成学习话题。", "识别到“案例 1、案例 2”等连续案例结构时，话题数量不得明显少于案例数量。", "高层长文分析提高模型输出预算，减少大模型因输出过长而合并话题。"] },
@@ -5814,10 +5815,10 @@ function renderMaterialOverviewPage() {
   const isMeetingNotes = activeDoc ? activeMaterialTypeKind === "meeting" || Boolean(activeAnalysis?.meetingAnalysis) : false;
   const isTrainingSpeech = activeDoc ? activeMaterialTypeKind === "training" || Boolean(activeAnalysis?.trainingAnalysis) : false;
   const activeMaterialPane = isMeetingNotes
-    ? (["meeting", "source", "topics", "mindmap", "topicMindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
+    ? (["meeting", "source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "meeting")
     : isTrainingSpeech
-      ? (["training", "source", "topics", "mindmap", "topicMindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
-      : (["source", "topics", "mindmap", "topicMindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "source");
+      ? (["training", "source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "training")
+      : (["source", "topics", "mindmap"].includes(state.activeMaterialPane) ? state.activeMaterialPane : "source");
   const activeTopic = activeDoc ? topics[state.activeMaterialTopicIndex] : null;
   const activeDocForTopic = activeDoc && activeAnalysis ? { ...activeDoc, analysis: activeAnalysis } : activeDoc;
   const row = activeDocForTopic && activeTopic ? materialTopicRow(activeDocForTopic, activeTopic, state.activeMaterialTopicIndex) : null;
@@ -5915,16 +5916,11 @@ function renderMaterialOverviewPage() {
               <button class="topic-detail-tab${activeMaterialPane === "source" ? " is-active" : ""}" type="button" data-material-pane="source">资料原文</button>
               <button class="topic-detail-tab${activeMaterialPane === "topics" ? " is-active" : ""}" type="button" data-material-pane="topics">话题内容</button>
               <button class="topic-detail-tab${activeMaterialPane === "mindmap" ? " is-active" : ""}" type="button" data-material-pane="mindmap">文章脑图</button>
-              ${row ? `<button class="topic-detail-tab${activeMaterialPane === "topicMindmap" ? " is-active" : ""}" type="button" data-material-pane="topicMindmap">话题脑图</button>` : ""}
             </div>
           </div>
           ${activeMaterialPane === "meeting" ? buildMeetingAnalysisHtml(activeAnalysis?.meetingAnalysis) : activeMaterialPane === "training" ? buildTrainingAnalysisHtml(activeAnalysis?.trainingAnalysis, activeDoc, activeSkillVersion) : activeMaterialPane === "source" ? buildMaterialOriginalHtml(activeDoc) : activeMaterialPane === "mindmap" ? `
             <article class="topic-article material-topic-article">
               ${activeAnalysis ? buildMaterialMindMapHtml(activeDoc, activeAnalysis) : `<p class="empty-state compact">这份材料没有可展示的文章脑图。</p>`}
-            </article>
-          ` : activeMaterialPane === "topicMindmap" ? `
-            <article class="topic-article material-topic-article">
-              ${row ? buildMindMapHtml(activeTopic, row) : `<p class="empty-state compact">请选择一个话题查看话题脑图。</p>`}
             </article>
           ` : `
             <div class="material-topic-nav">
@@ -6079,8 +6075,8 @@ function renderMaterialOverviewPage() {
   bindMindMapInteractions(
     els.materialOverviewPage,
     () => renderMaterialOverviewPage(),
-    activeMaterialPane === "topicMindmap" ? activeTopic : null,
-    activeMaterialPane === "topicMindmap" ? row : null,
+    null,
+    null,
     materialMindRoot,
   );
   els.materialOverviewPage.querySelectorAll("[data-rich-command]").forEach((button) => {
@@ -6688,7 +6684,6 @@ function buildMindMapDetailHtml(root, selectedId) {
     ${hasLinkedTopic ? `
       <div class="knowledge-map-node-actions">
         <button class="mini-button" type="button" data-mind-topic-analysis="${escapeHtml(String(selected.topicIndex))}">查看话题解析</button>
-        <button class="mini-button" type="button" data-mind-topic-map="${escapeHtml(String(selected.topicIndex))}">查看话题脑图</button>
       </div>
     ` : ""}
     ${(selected.children || []).length ? `<div class="knowledge-map-child-list"><strong>子节点</strong>${selected.children.map((child) => `<button type="button" data-mind-node="${escapeHtml(child.id)}">${escapeHtml(mindMapNodeLabel(child))}</button>`).join("")}</div>` : ""}
@@ -6746,16 +6741,16 @@ function buildMaterialMindMapHtml(doc, analysis) {
 function bindMindMapInteractions(rootEl, rerender, topic = null, row = null, rootOverride = null) {
   const mindRoot = rootOverride || (topic ? buildMindMapData(topic, row) : null);
   const bindTopicActionButtons = () => {
-    rootEl.querySelectorAll("[data-mind-topic-analysis], [data-mind-topic-map]").forEach((button) => {
+    rootEl.querySelectorAll("[data-mind-topic-analysis]").forEach((button) => {
       if (button.dataset.mindTopicBound === "true") {
         return;
       }
       button.dataset.mindTopicBound = "true";
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        const topicIndex = Number(button.dataset.mindTopicAnalysis ?? button.dataset.mindTopicMap ?? 0);
+        const topicIndex = Number(button.dataset.mindTopicAnalysis ?? 0);
         state.activeMaterialTopicIndex = topicIndex;
-        state.activeMaterialPane = button.dataset.mindTopicMap !== undefined ? "topicMindmap" : "topics";
+        state.activeMaterialPane = "topics";
         state.mindMapSelectedNodeId = "";
         state.mindMapCollapsedNodeIds = [];
         rerender();
