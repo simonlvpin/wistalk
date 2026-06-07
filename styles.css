@@ -2249,15 +2249,40 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.knowledge-map-action-group {
+  display: inline-flex;
   gap: 8px;
   align-items: center;
 }
 
-.knowledge-map-actions span {
+.knowledge-map-view-actions {
+  margin-left: 6px;
+}
+
+.knowledge-map-export-actions {
+  margin-left: 16px;
+}
+
+.knowledge-map-action-group > span {
   min-width: 46px;
   color: #536170;
   font-weight: 800;
   text-align: center;
+}
+
+.mind-map-utility-button {
+  border-color: #b9c8d3;
+  background: #eef3f7;
+  color: #304251;
+}
+
+.mind-map-utility-button:hover {
+  border-color: #7792a3;
+  background: #e1ebf1;
 }
 
 .knowledge-map-layout {
@@ -2318,6 +2343,37 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.knowledge-map-parent-row {
+  min-height: 24px;
+}
+
+.knowledge-map-parent-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font-size: var(--body-font-size);
+  font-weight: 800;
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.knowledge-map-parent-link::before {
+  content: "上一级：";
+  color: #778693;
+  font-weight: 700;
+}
+
+.knowledge-map-parent-link:hover {
+  color: var(--teal-strong);
+  text-decoration: underline;
 }
 
 .knowledge-map-detail h4 {

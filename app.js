@@ -97,6 +97,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.34", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图交互优化", changes: ["脑图节点展示标题和一句话内容摘要，导出后也能看清节点含义。", "点击脑图节点改为局部更新详情，避免画布滚动位置跳回顶部。", "右侧详情支持点击父级节点返回，并将 PDF 导出改为直接生成下载。"] },
   { version: "v1.8.33", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "导航收缩与脑图全页面", changes: ["左侧导航增加收缩和展开按钮，收缩后主内容区域自动变宽。", "知识脑图增加全页面查看模式。", "脑图节点尺寸和文字字号收紧，默认可看到更多节点内容。"] },
   { version: "v1.8.32", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "知识脑图页面", changes: ["话题详情新增知识脑图标签页。", "脑图节点支持点击查看对应内容，并支持节点收起、展开和缩放。", "知识脑图支持导出为图片，也可打开打印流程导出为 PDF。"] },
   { version: "v1.8.31", date: "2026-06-06", updatedAt: "2026-06-06T00:00:00+08:00", title: "培训弱话题容错", changes: ["培训和会议分析遇到证据不足的话题时自动过滤，不再让整份材料刷新失败。", "培训 SKILL 默认版本升级到 v1.5，禁止把课程预告、转场和下一节安排强行生成知识点话题。", "被过滤的话题会写入 topicExtractionNote，便于回看模型输出问题。"] },
@@ -6014,7 +6015,7 @@ function renderMaterialOverviewPage() {
       renderMaterialOverviewPage();
     });
   });
-  bindMindMapInteractions(els.materialOverviewPage, () => renderMaterialOverviewPage());
+  bindMindMapInteractions(els.materialOverviewPage, () => renderMaterialOverviewPage(), activeTopic, row);
   els.materialOverviewPage.querySelectorAll("[data-rich-command]").forEach((button) => {
     button.addEventListener("click", () => {
       const editor = els.materialOverviewPage.querySelector("[data-training-note-editor]");
@@ -6202,7 +6203,7 @@ function renderTopicHomeArticle(row) {
       renderTopicHomeArticle(row);
     });
   });
-  bindMindMapInteractions(els.topicHomeArticle, () => renderTopicHomeArticle(row));
+  bindMindMapInteractions(els.topicHomeArticle, () => renderTopicHomeArticle(row), row.topic, row);
   els.topicHomeArticle.querySelectorAll("[data-original-keyword]").forEach((button) => {
     button.addEventListener("click", () => {
       const keyword = button.dataset.originalKeyword;
@@ -6297,6 +6298,30 @@ function createMindNode(id, title, content, children = []) {
   };
 }
 
+function mindMapNodeLabel(node) {
+  const title = String(node?.title || "未命名节点").trim();
+  if (!node || node.id === "root") {
+    return title;
+  }
+  const content = String(node.content || "")
+    .replace(/\s+/g, " ")
+    .replace(/^未提及$/, "")
+    .trim();
+  if (!content) {
+    return title;
+  }
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const cleaned = content
+    .replace(new RegExp(`^${escapedTitle}[：:；;，,。\\s-]*`), "")
+    .replace(/^(说明|内容|摘要|详情|背景|步骤|核心观点|详细展开)[：:]\s*/, "")
+    .trim();
+  const segment = cleaned
+    .split(/[。！？!?；;\n]/)
+    .map((item) => item.trim())
+    .find((item) => item && item !== "未提及");
+  return segment ? `${title}：${compactText(segment).slice(0, 46)}` : title;
+}
+
 function buildTrainingMindMap(topic) {
   const trainingTopic = normalizeTrainingTopic(topic.trainingTopic || topic) || {};
   return createMindNode("root", topic.title || trainingTopic.learningQuestion || trainingTopic.knowledgeName || "培训话题", trainingTopic.coreViewpoint || trainingTopic.detailedExplanation || topic.sourceSummary, [
@@ -6388,9 +6413,13 @@ function buildMindMapData(topic, row = null) {
 
 function flattenMindMapNodes(root) {
   const nodes = [];
-  const visit = (node) => {
-    nodes.push(node);
-    (node.children || []).forEach(visit);
+  const visit = (node, parent = null) => {
+    nodes.push({
+      ...node,
+      parentId: parent?.id || "",
+      parentTitle: parent?.title || "",
+    });
+    (node.children || []).forEach((child) => visit(child, node));
   };
   visit(root);
   return nodes;
@@ -6400,10 +6429,10 @@ function layoutMindMap(root) {
   const collapsed = new Set(state.mindMapCollapsedNodeIds || []);
   const nodes = [];
   const edges = [];
-  const nodeWidth = 184;
-  const nodeHeight = 46;
-  const depthGap = 226;
-  const rowGap = 68;
+  const nodeWidth = 214;
+  const nodeHeight = 58;
+  const depthGap = 258;
+  const rowGap = 78;
   let leafIndex = 0;
   let maxDepth = 0;
   const place = (node, depth, parent = null) => {
@@ -6420,6 +6449,8 @@ function layoutMindMap(root) {
       width: nodeWidth,
       height: nodeHeight,
       depth,
+      parentId: parent?.id || "",
+      parentTitle: parent?.title || "",
       hasChildren: Boolean((node.children || []).length),
       collapsed: collapsed.has(node.id),
     };
@@ -6457,11 +6488,11 @@ function buildMindMapSvg(layout, selectedId) {
     const fill = node.depth === 0 ? "#2f8f8a" : selected ? "#fff7e8" : "#ffffff";
     const stroke = selected ? "#d58a24" : node.depth === 0 ? "#2f8f8a" : "#cbd7df";
     const textColor = node.depth === 0 ? "#ffffff" : "#223142";
-    const lines = svgTextLines(node.title).map((line, index) => `<tspan x="${node.x + 12}" y="${node.y + 18 + index * 15}">${escapeHtml(line)}</tspan>`).join("");
+    const lines = svgTextLines(mindMapNodeLabel(node), 13, 3).map((line, index) => `<tspan x="${node.x + 12}" y="${node.y + 17 + index * 14}">${escapeHtml(line)}</tspan>`).join("");
     return `
-      <g class="mind-map-node${selected ? " is-selected" : ""}" data-mind-node="${escapeHtml(node.id)}" role="button" tabindex="0">
+      <g class="mind-map-node${selected ? " is-selected" : ""}" data-mind-node="${escapeHtml(node.id)}" data-mind-depth="${escapeHtml(String(node.depth))}" role="button" tabindex="0">
         <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 2 : 1.2}"></rect>
-        <text fill="${textColor}" font-size="12" font-weight="700">${lines}</text>
+        <text fill="${textColor}" font-size="11" font-weight="700">${lines}</text>
         ${node.hasChildren ? `
           <g class="mind-map-collapse" data-mind-collapse="${escapeHtml(node.id)}">
             <circle cx="${node.x + node.width - 14}" cy="${node.y + 14}" r="8" fill="${node.collapsed ? "#f2f6f8" : "#e8f4f3"}" stroke="${stroke}"></circle>
@@ -6482,11 +6513,24 @@ function buildMindMapSvg(layout, selectedId) {
   return `<svg class="knowledge-map-svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="知识脑图">${edgeHtml}${nodeHtml}</svg>`;
 }
 
+function buildMindMapDetailHtml(root, selectedId) {
+  const allNodes = flattenMindMapNodes(root);
+  const selected = allNodes.find((node) => node.id === selectedId) || allNodes[0] || root;
+  const parent = selected.parentId ? allNodes.find((node) => node.id === selected.parentId) : null;
+  return `
+    <div class="knowledge-map-parent-row">
+      ${parent ? `<button class="knowledge-map-parent-link" type="button" data-mind-node="${escapeHtml(parent.id)}" title="查看上一级：${escapeHtml(parent.title)}">${escapeHtml(parent.title)}</button>` : `<span class="section-kicker">知识脑图</span>`}
+    </div>
+    <h4>${escapeHtml(selected.title)}</h4>
+    <p>${escapeHtml(selected.content || "暂无节点内容。")}</p>
+    ${(selected.children || []).length ? `<div class="knowledge-map-child-list"><strong>子节点</strong>${selected.children.map((child) => `<button type="button" data-mind-node="${escapeHtml(child.id)}">${escapeHtml(mindMapNodeLabel(child))}</button>`).join("")}</div>` : ""}
+  `;
+}
+
 function buildMindMapHtml(topic, row = null) {
   const root = buildMindMapData(topic, row);
   const allNodes = flattenMindMapNodes(root);
   const selectedId = allNodes.some((node) => node.id === state.mindMapSelectedNodeId) ? state.mindMapSelectedNodeId : root.id;
-  const selected = allNodes.find((node) => node.id === selectedId) || root;
   const layout = layoutMindMap(root);
   const zoom = Math.max(0.6, Math.min(1.8, Number(state.mindMapZoom || 1)));
   return `
@@ -6497,38 +6541,62 @@ function buildMindMapHtml(topic, row = null) {
           <h3>${escapeHtml(root.title)}</h3>
         </div>
         <div class="knowledge-map-actions">
-          <button class="mini-button" type="button" data-mind-zoom="out">缩小</button>
-          <span>${escapeHtml(String(Math.round(zoom * 100)))}%</span>
-          <button class="mini-button" type="button" data-mind-zoom="in">放大</button>
-          <button class="mini-button" type="button" data-mind-reset>重置</button>
-          <button class="mini-button" type="button" data-mind-fullscreen>${state.mindMapFullscreen ? "退出全页面" : "全页面"}</button>
-          <button class="mini-button" type="button" data-mind-export="png">导出图片</button>
-          <button class="mini-button" type="button" data-mind-export="pdf">导出 PDF</button>
+          <span class="knowledge-map-action-group">
+            <button class="mini-button" type="button" data-mind-zoom="out">缩小</button>
+            <span>${escapeHtml(String(Math.round(zoom * 100)))}%</span>
+            <button class="mini-button" type="button" data-mind-zoom="in">放大</button>
+          </span>
+          <span class="knowledge-map-action-group knowledge-map-view-actions">
+            <button class="mini-button mind-map-utility-button" type="button" data-mind-reset>重置</button>
+            <button class="mini-button mind-map-utility-button" type="button" data-mind-fullscreen>${state.mindMapFullscreen ? "退出全页面" : "全页面"}</button>
+          </span>
+          <span class="knowledge-map-action-group knowledge-map-export-actions">
+            <button class="mini-button" type="button" data-mind-export="png">导出图片</button>
+            <button class="mini-button" type="button" data-mind-export="pdf">导出 PDF</button>
+          </span>
         </div>
       </div>
       <div class="knowledge-map-layout">
         <div class="knowledge-map-canvas" data-mind-canvas style="--mind-map-zoom:${zoom};">
           ${buildMindMapSvg(layout, selectedId)}
         </div>
-        <aside class="knowledge-map-detail">
-          <p class="section-kicker">节点内容</p>
-          <h4>${escapeHtml(selected.title)}</h4>
-          <p>${escapeHtml(selected.content || "暂无节点内容。")}</p>
-          ${(selected.children || []).length ? `<div class="knowledge-map-child-list"><strong>子节点</strong>${selected.children.map((child) => `<button type="button" data-mind-node="${escapeHtml(child.id)}">${escapeHtml(child.title)}</button>`).join("")}</div>` : ""}
+        <aside class="knowledge-map-detail" data-mind-detail>
+          ${buildMindMapDetailHtml(root, selectedId)}
         </aside>
       </div>
     </section>
   `;
 }
 
-function bindMindMapInteractions(rootEl, rerender) {
-  rootEl.querySelectorAll("[data-mind-node]").forEach((node) => {
-    node.addEventListener("click", (event) => {
-      event.stopPropagation();
-      state.mindMapSelectedNodeId = node.dataset.mindNode;
+function bindMindMapInteractions(rootEl, rerender, topic = null, row = null) {
+  const mindRoot = topic ? buildMindMapData(topic, row) : null;
+  const selectNode = (nodeId) => {
+    state.mindMapSelectedNodeId = nodeId;
+    if (!mindRoot) {
       rerender();
+      return;
+    }
+    const allNodes = flattenMindMapNodes(mindRoot);
+    if (!allNodes.some((item) => item.id === nodeId)) {
+      rerender();
+      return;
+    }
+    updateMindMapSelection(rootEl, mindRoot, nodeId);
+    bindNodeButtons();
+  };
+  const bindNodeButtons = () => {
+    rootEl.querySelectorAll("[data-mind-node]").forEach((node) => {
+      if (node.dataset.mindNodeBound === "true") {
+        return;
+      }
+      node.dataset.mindNodeBound = "true";
+      node.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectNode(node.dataset.mindNode);
+      });
     });
-  });
+  };
+  bindNodeButtons();
   rootEl.querySelectorAll("[data-mind-collapse]").forEach((node) => {
     node.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -6565,6 +6633,113 @@ function bindMindMapInteractions(rootEl, rerender) {
   });
 }
 
+function updateMindMapSelection(rootEl, root, selectedId) {
+  rootEl.querySelectorAll(".mind-map-node[data-mind-node]").forEach((node) => {
+    const isSelected = node.dataset.mindNode === selectedId;
+    const isRoot = node.dataset.mindDepth === "0";
+    node.classList.toggle("is-selected", isSelected);
+    const rect = node.querySelector("rect");
+    if (rect) {
+      rect.setAttribute("fill", isRoot ? "#2f8f8a" : isSelected ? "#fff7e8" : "#ffffff");
+      rect.setAttribute("stroke", isSelected ? "#d58a24" : isRoot ? "#2f8f8a" : "#cbd7df");
+      rect.setAttribute("stroke-width", isSelected ? "2" : "1.2");
+    }
+  });
+  const detail = rootEl.querySelector("[data-mind-detail]");
+  if (detail) {
+    detail.innerHTML = buildMindMapDetailHtml(root, selectedId);
+  }
+}
+
+async function saveBlobFile(blob, filename, mimeType) {
+  const extension = filename.includes(".") ? `.${filename.split(".").pop()}` : "";
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: filename, accept: { [mimeType]: [extension] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return;
+      }
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function dataUrlToBytes(dataUrl) {
+  const base64 = String(dataUrl).split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function createMindMapPdfBlob(canvas) {
+  const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  const imageBytes = dataUrlToBytes(jpegDataUrl);
+  const pageWidth = Math.min(14400, Math.max(842, Math.round(canvas.width * 0.72)));
+  const pageHeight = Math.min(14400, Math.max(595, Math.round(canvas.height * 0.72)));
+  const margin = 24;
+  const scale = Math.min((pageWidth - margin * 2) / canvas.width, (pageHeight - margin * 2) / canvas.height);
+  const drawWidth = Math.round(canvas.width * scale);
+  const drawHeight = Math.round(canvas.height * scale);
+  const drawX = Math.round((pageWidth - drawWidth) / 2);
+  const drawY = Math.round((pageHeight - drawHeight) / 2);
+  const encoder = new TextEncoder();
+  const parts = [];
+  const offsets = [0];
+  let offset = 0;
+  const appendString = (value) => {
+    const bytes = encoder.encode(value);
+    parts.push(bytes);
+    offset += bytes.length;
+  };
+  const appendBytes = (bytes) => {
+    parts.push(bytes);
+    offset += bytes.length;
+  };
+  const beginObject = (id) => {
+    offsets[id] = offset;
+    appendString(`${id} 0 obj\n`);
+  };
+  appendString("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+  beginObject(1);
+  appendString("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  beginObject(2);
+  appendString("<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+  beginObject(3);
+  appendString(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`);
+  beginObject(4);
+  appendString(`<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`);
+  appendBytes(imageBytes);
+  appendString("\nendstream\nendobj\n");
+  const content = `q\n${drawWidth} 0 0 ${drawHeight} ${drawX} ${drawY} cm\n/Im0 Do\nQ\n`;
+  beginObject(5);
+  appendString(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}endstream\nendobj\n`);
+  const xrefOffset = offset;
+  appendString("xref\n0 6\n0000000000 65535 f \n");
+  for (let id = 1; id <= 5; id += 1) {
+    appendString(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+  }
+  appendString(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+  return new Blob(parts, { type: "application/pdf" });
+}
+
 function exportMindMap(mapEl, format = "png") {
   const svg = mapEl?.querySelector(".knowledge-map-svg");
   if (!svg) {
@@ -6582,7 +6757,7 @@ function exportMindMap(mapEl, format = "png") {
   const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const image = new Image();
-  image.onload = () => {
+  image.onload = async () => {
     const canvas = document.createElement("canvas");
     canvas.width = image.naturalWidth || Number(clone.getAttribute("width")) || 1200;
     canvas.height = image.naturalHeight || Number(clone.getAttribute("height")) || 800;
@@ -6591,24 +6766,15 @@ function exportMindMap(mapEl, format = "png") {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0);
     URL.revokeObjectURL(url);
-    const pngUrl = canvas.toDataURL("image/png");
     if (format === "pdf") {
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        return;
-      }
-      printWindow.document.write(`<!doctype html><html><head><title>知识脑图 PDF</title><style>body{margin:0;padding:24px;background:#fff;}img{width:100%;height:auto;}@page{size:landscape;margin:12mm;}</style></head><body><img src="${pngUrl}" alt="知识脑图" /></body></html>`);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+      await saveBlobFile(createMindMapPdfBlob(canvas), "knowledge-map.pdf", "application/pdf");
       return;
     }
-    const link = document.createElement("a");
-    link.href = pngUrl;
-    link.download = "knowledge-map.png";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    canvas.toBlob(async (pngBlob) => {
+      if (pngBlob) {
+        await saveBlobFile(pngBlob, "knowledge-map.png", "image/png");
+      }
+    }, "image/png");
   };
   image.src = url;
 }
