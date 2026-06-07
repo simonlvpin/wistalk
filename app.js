@@ -117,6 +117,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.45", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章直接编辑", changes: ["生成文章页的标题、核心观点和正文改为直接展示并可原位编辑。", "文章 SKILL 弹窗支持直接修改 SKILL.md 并保存为新版本。", "保存新文章 SKILL 后，旧文章会提示可按最新 SKILL 刷新。"] },
   { version: "v1.8.44", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章正式正文展示", changes: ["生成文章页的文章 SKILL 支持点击查看完整内容。", "生成文章编辑区移除重复标题和文章框架字段。", "正文生成和展示改为正式文章段落，自动清理 Markdown 标记。"] },
   { version: "v1.8.43", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "生成文章进度与离开保护", changes: ["生成文章和刷新文章时新增进度、百分比和执行日志。", "生成过程中切换页面会提示停止执行或后台继续。", "浏览器刷新或关闭页面时会提示当前生成任务仍在执行。"] },
   { version: "v1.8.42", date: "2026-06-07", updatedAt: "2026-06-07T00:00:00+08:00", title: "文章观点选择逻辑修正", changes: ["推荐文章后默认不再自动选择文章和观点。", "选中文章时才启用并默认选择该文章下的主要观点。", "某篇文章下所有观点取消后，文章会自动取消选择。"] },
@@ -1109,10 +1110,11 @@ function renderArticleGenerationProgressHtml(scope = "topic") {
   `;
 }
 
-function showSkillContentModal(skill, title = "SKILL 内容") {
+function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
   if (!skill) {
     return;
   }
+  const editable = Boolean(options.editable);
   const overlay = document.createElement("div");
   overlay.className = "skill-diff-overlay skill-content-overlay";
   const close = () => overlay.remove();
@@ -1130,15 +1132,55 @@ function showSkillContentModal(skill, title = "SKILL 内容") {
         <span class="pill">${escapeHtml(skill.version || "未记录版本")}</span>
         <span class="pill">${escapeHtml(skill.summary || "暂无说明")}</span>
       </div>
-      <pre class="skill-content-pre">${escapeHtml(skill.prompt || "暂无 SKILL 内容。")}</pre>
+      ${editable ? `
+        <label class="skill-content-summary">
+          <span>新版本说明</span>
+          <input class="text-input compact-text-input" data-skill-content-summary maxlength="80" value="从生成文章页修改文章 SKILL" />
+        </label>
+        <textarea class="text-input skill-content-editor" data-skill-content-editor>${escapeHtml(skill.prompt || "")}</textarea>
+        <div class="skill-content-actions">
+          <button class="mini-button" type="button" data-skill-content-close>取消</button>
+          <button class="primary mini-button" type="button" data-skill-content-save disabled>保存为新 SKILL</button>
+        </div>
+      ` : `<pre class="skill-content-pre">${escapeHtml(skill.prompt || "暂无 SKILL 内容。")}</pre>`}
     </section>
   `;
-  overlay.querySelector("[data-skill-content-close]")?.addEventListener("click", close);
+  overlay.querySelectorAll("[data-skill-content-close]").forEach((button) => button.addEventListener("click", close));
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) {
       close();
     }
   });
+  if (editable) {
+    const editor = overlay.querySelector("[data-skill-content-editor]");
+    const summaryInput = overlay.querySelector("[data-skill-content-summary]");
+    const saveButton = overlay.querySelector("[data-skill-content-save]");
+    const syncSave = () => {
+      if (saveButton) {
+        saveButton.disabled = !editor?.value.trim() || editor.value.trim() === String(skill.prompt || "").trim();
+      }
+    };
+    editor?.addEventListener("input", syncSave);
+    saveButton?.addEventListener("click", async () => {
+      const prompt = editor?.value.trim() || "";
+      const summary = summaryInput?.value.trim() || "从生成文章页修改文章 SKILL";
+      if (!prompt || prompt === String(skill.prompt || "").trim()) {
+        return;
+      }
+      const diffLog = buildSkillDiffLog(skill, { summary, prompt });
+      const ok = await confirmAction({
+        title: "保存文章 SKILL 新版本",
+        message: `确认将当前修改保存为新的文章 SKILL 版本吗？\n\n与当前版本差异：\n${diffLog.map((item) => `- ${item}`).join("\n")}`,
+        confirmText: "确认保存",
+      });
+      if (!ok) {
+        return;
+      }
+      await createArticleSkillVersion(summary, prompt, diffLog);
+      close();
+    });
+    syncSave();
+  }
   document.body.appendChild(overlay);
   overlay.querySelector("[data-skill-content-close]")?.focus();
 }
@@ -8806,7 +8848,7 @@ function renderGeneratedArticlePage() {
           <div class="generated-editor-head">
             <div>
               <p class="section-kicker">Article Editor</p>
-              <h3>${escapeHtml(active.title || "未命名文章")}</h3>
+              <h3 class="generated-title-editor" id="generatedArticleTitle" contenteditable="${articleTaskActive ? "false" : "true"}">${escapeHtml(active.title || "未命名文章")}</h3>
             </div>
             <div class="generated-editor-actions">
               ${activeNeedsRefresh ? `<button class="mini-button" type="button" data-refresh-generated-article="${escapeHtml(active.id)}" ${articleTaskActive ? "disabled" : ""}>按最新 SKILL 刷新</button>` : ""}
@@ -8828,10 +8870,10 @@ function renderGeneratedArticlePage() {
             </div>
           ` : ""}
           ${activeNeedsRefresh ? `<p class="category-notice" data-tone="info">当前最新文章 SKILL 是 ${escapeHtml(skillDisplayName(latestArticleSkill, "文章 SKILL.md"))}，这篇文章可刷新到最新写作规则。</p>` : ""}
-          <label class="config-field generated-field">
-            <span>文章核心观点</span>
-            <textarea class="text-input" id="generatedArticleCore" rows="3">${escapeHtml(active.coreViewpoint || "")}</textarea>
-          </label>
+          <section class="generated-field">
+            <span class="generated-field-label">文章核心观点</span>
+            <div class="generated-core-editor" id="generatedArticleCore" contenteditable="${articleTaskActive ? "false" : "true"}">${escapeHtml(active.coreViewpoint || "暂无核心观点")}</div>
+          </section>
           <section class="generated-field">
             <span class="generated-field-label">正文内容</span>
             <div class="generated-content-editor" id="generatedArticleContent" contenteditable="${articleTaskActive ? "false" : "true"}">${normalizeGeneratedArticleContent(active.content || "")}</div>
@@ -8852,7 +8894,7 @@ function renderGeneratedArticlePage() {
   });
   els.generatedArticlePage.querySelector("[data-open-generated-skill]")?.addEventListener("click", () => {
     const skill = activeSkill || currentArticleSkill();
-    showSkillContentModal(skill, `${skill.skillFileName || skill.name || "文章 SKILL.md"} ${skill.version || ""}`.trim());
+    showSkillContentModal(skill, `${skill.skillFileName || skill.name || "文章 SKILL.md"} ${skill.version || ""}`.trim(), { editable: true });
   });
   els.generatedArticlePage.querySelector("[data-save-generated-article]")?.addEventListener("click", async (event) => {
     const article = state.generatedArticles.find((item) => item.id === event.currentTarget.dataset.saveGeneratedArticle);
@@ -8869,7 +8911,8 @@ function renderGeneratedArticlePage() {
     }
     const updated = {
       ...article,
-      coreViewpoint: els.generatedArticlePage.querySelector("#generatedArticleCore")?.value.trim() || "",
+      title: els.generatedArticlePage.querySelector("#generatedArticleTitle")?.innerText.trim() || article.title,
+      coreViewpoint: els.generatedArticlePage.querySelector("#generatedArticleCore")?.innerText.trim() || "",
       content: normalizeGeneratedArticleContent(els.generatedArticlePage.querySelector("#generatedArticleContent")?.innerHTML || ""),
       updatedAt: new Date().toISOString(),
     };
