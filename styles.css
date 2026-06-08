@@ -2688,8 +2688,8 @@ textarea {
 .generated-source-tags .pill,
 .generated-skill-pill {
   min-height: 24px;
-  padding: 3px 8px;
-  font-size: calc(var(--body-font-size) - 2px);
+  padding: 2px 8px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -2772,11 +2772,31 @@ textarea {
   background: #fbfdfd;
 }
 
-.generated-content-editor h3 {
+.generated-content-editor h2,
+.generated-content-editor h3,
+.generated-content-editor h4 {
+  color: #26384c;
+  text-align: left;
+  letter-spacing: 0;
+}
+
+.generated-content-editor h2 {
   margin: 28px 0 14px;
+  font-size: calc(var(--body-font-size) + 4px);
+  line-height: 1.45;
+}
+
+.generated-content-editor h3 {
+  margin: 22px 0 12px;
   color: #26384c;
   font-size: calc(var(--body-font-size) + 2px);
-  text-align: center;
+  line-height: 1.5;
+}
+
+.generated-content-editor h4 {
+  margin: 18px 0 10px;
+  font-size: calc(var(--body-font-size) + 1px);
+  line-height: 1.5;
 }
 
 .generated-content-editor p {
@@ -2810,6 +2830,14 @@ textarea {
   white-space: nowrap;
 }
 
+.skill-pill-button.generated-skill-pill {
+  border-color: #d8e0f2;
+  background: #f6f8fc;
+  color: #4b5870;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .topic-skill-pill,
 .generated-skill-pill {
   margin-left: auto;
@@ -2823,7 +2851,12 @@ textarea {
 .generated-skill-pill::after {
   content: "  点击查看";
   color: color-mix(in srgb, var(--teal-strong) 70%, #667085);
-  font-weight: 700;
+  font-weight: 500;
+}
+
+.skill-pill-button.generated-skill-pill::after {
+  color: #667085;
+  font-weight: 500;
 }
 
 .topic-card-skill-pill {
