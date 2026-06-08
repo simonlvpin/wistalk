@@ -118,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.52", date: "2026-06-08", updatedAt: "2026-06-08T00:00:00+08:00", title: "SKILL 保存防重复", changes: ["修复从页面弹出的 SKILL 编辑窗口中，确认弹窗被编辑窗口遮挡的问题。", "SKILL 保存按钮会同时校验当前打开版本和当前最新版本，内容没有变化时不能保存成新版本。", "保存 SKILL 过程中按钮会临时锁定，避免连续点击生成重复版本。"] },
   { version: "v1.8.51", date: "2026-06-07", updatedAt: "2026-06-07T21:15:00+08:00", title: "生成文章阅读样式优化", changes: ["生成文章页的文章 SKILL 标签改为更小字号、轻字重和浅色底。", "生成文章正文去掉“正文内容”标签，减少阅读干扰。", "文章正文标题改为左对齐，并支持 h2/h3/h4 多级标题层次。"] },
   { version: "v1.8.50", date: "2026-06-07", updatedAt: "2026-06-07T21:05:00+08:00", title: "列表宽度与默认用户筛选优化", changes: ["缩小左侧导航与内容列表之间的留白，让页面横向空间更紧凑。", "材料列表、话题列表、生成文章等左侧列表列宽收窄，右侧主体阅读区更宽。", "管理员进入材料/话题视图时默认只筛选自己的邮箱，需要看其他用户时再手动搜索。"] },
   { version: "v1.8.49", date: "2026-06-07", updatedAt: "2026-06-07T20:55:00+08:00", title: "系统配色重设计", changes: ["重新设计 11 组系统配色，整体改为更现代、更清爽的产品化色彩。", "去掉偏暖黄、土色和脏灰的搭配，改用蓝、青、紫、玫红等更耐看的冷调与高亮色。", "保留原有主题 id，用户已选择的配色不会丢失，只会自动换成新版视觉。"] },
@@ -1147,6 +1148,7 @@ function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
           <input class="text-input compact-text-input" data-skill-content-summary maxlength="80" value="${escapeHtml(skillKind === "topic" ? "从材料/话题页修改话题 SKILL" : "从生成文章页修改文章 SKILL")}" />
         </label>
         <textarea class="text-input skill-content-editor" data-skill-content-editor>${escapeHtml(skill.prompt || "")}</textarea>
+        <p class="category-notice compact" data-skill-content-message data-tone="info">只有 SKILL.md 内容发生变化时，才能保存为新版本。</p>
         <div class="skill-content-actions">
           <button class="mini-button" type="button" data-skill-content-close>取消</button>
           <button class="primary mini-button" type="button" data-skill-content-save disabled>保存为新 SKILL</button>
@@ -1164,16 +1166,43 @@ function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
     const editor = overlay.querySelector("[data-skill-content-editor]");
     const summaryInput = overlay.querySelector("[data-skill-content-summary]");
     const saveButton = overlay.querySelector("[data-skill-content-save]");
+    const messageNode = overlay.querySelector("[data-skill-content-message]");
+    let saving = false;
+    const latestSkillForModal = () => skillKind === "topic"
+      ? currentTopicSkill(skillTypeId(skill) || options.targetMaterialTypeId || "type-executive-view")
+      : currentArticleSkill();
+    const setMessage = (message, tone = "info") => {
+      if (messageNode) {
+        messageNode.textContent = message;
+        messageNode.dataset.tone = tone;
+      }
+    };
     const syncSave = () => {
       if (saveButton) {
-        saveButton.disabled = !editor?.value.trim() || editor.value.trim() === String(skill.prompt || "").trim();
+        const prompt = editor?.value || "";
+        const latestSkill = latestSkillForModal();
+        const empty = !normalizeSkillPromptForCompare(prompt);
+        const sameAsOpened = sameSkillPrompt(prompt, skill.prompt || "");
+        const sameAsLatest = sameSkillPrompt(prompt, latestSkill?.prompt || "");
+        saveButton.disabled = saving || empty || sameAsOpened || sameAsLatest;
+        if (empty) {
+          setMessage("SKILL.md 内容不能为空。", "error");
+        } else if (sameAsOpened) {
+          setMessage("当前内容与打开的版本一致，不能保存为新版本。", "info");
+        } else if (sameAsLatest) {
+          setMessage("当前内容与最新版本一致，不能重复保存为新版本。", "info");
+        } else {
+          setMessage("已检测到内容变化，可以保存为新版本。", "success");
+        }
       }
     };
     editor?.addEventListener("input", syncSave);
     saveButton?.addEventListener("click", async () => {
       const prompt = editor?.value.trim() || "";
       const summary = summaryInput?.value.trim() || (skillKind === "topic" ? "从材料/话题页修改话题 SKILL" : "从生成文章页修改文章 SKILL");
-      if (!prompt || prompt === String(skill.prompt || "").trim()) {
+      const latestSkill = latestSkillForModal();
+      if (!prompt || sameSkillPrompt(prompt, skill.prompt || "") || sameSkillPrompt(prompt, latestSkill?.prompt || "")) {
+        syncSave();
         return;
       }
       const diffLog = buildSkillDiffLog(skill, { summary, prompt });
@@ -1185,12 +1214,35 @@ function showSkillContentModal(skill, title = "SKILL 内容", options = {}) {
       if (!ok) {
         return;
       }
-      if (skillKind === "topic") {
-        await createTopicSkillVersion(summary, prompt, diffLog, skillTypeId(skill) || options.targetMaterialTypeId || "type-executive-view");
-      } else {
-        await createArticleSkillVersion(summary, prompt, diffLog);
+      saving = true;
+      saveButton.disabled = true;
+      saveButton.textContent = "保存中...";
+      try {
+        if (skillKind === "topic") {
+          const created = await createTopicSkillVersion(summary, prompt, diffLog, skillTypeId(skill) || options.targetMaterialTypeId || "type-executive-view");
+          if (!created) {
+            saving = false;
+            saveButton.textContent = "保存为新 SKILL";
+            syncSave();
+            return;
+          }
+        } else {
+          const created = await createArticleSkillVersion(summary, prompt, diffLog);
+          if (!created) {
+            saving = false;
+            saveButton.textContent = "保存为新 SKILL";
+            syncSave();
+            return;
+          }
+        }
+        close();
+      } catch (error) {
+        console.error(error);
+        saving = false;
+        saveButton.textContent = "保存为新 SKILL";
+        setMessage(`保存失败：${error.message || "请稍后重试"}`, "error");
+        syncSave();
       }
-      close();
     });
     syncSave();
   }
@@ -2111,6 +2163,19 @@ function compareSkillVersions(a, b) {
   return Number(b?.versionNumber || 0) - Number(a?.versionNumber || 0);
 }
 
+function normalizeSkillPromptForCompare(prompt = "") {
+  return String(prompt || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trim();
+}
+
+function sameSkillPrompt(left = "", right = "") {
+  return normalizeSkillPromptForCompare(left) === normalizeSkillPromptForCompare(right);
+}
+
 function dedupeTopicSkills(skills) {
   const map = new Map();
   skills.filter(Boolean).forEach((skill) => {
@@ -2594,13 +2659,18 @@ async function createTopicSkillVersion(summary, prompt, changeLog = null, target
   const promptValue = String(prompt || "").trim();
   if (!summaryValue || !promptValue) {
     setSkillNotice("请填写版本说明和 SKILL 提示词。", "error");
-    return;
+    return false;
   }
   const targetTypeId = targetTypeIdOverride || state.activeSkillMaterialTypeId || "type-executive-view";
   state.activeSkillMaterialTypeId = targetTypeId;
   const targetType = materialTypeById(targetTypeId) || DEFAULT_MATERIAL_TYPES[0];
   const scopedSkills = state.topicSkills.filter((skill) => skillTypeId(skill) === targetTypeId);
   const previousSkill = currentTopicSkill(targetTypeId);
+  if (sameSkillPrompt(promptValue, previousSkill?.prompt || "")) {
+    setSkillNotice("SKILL.md 内容与当前最新版本一致，未创建新版本。", "info");
+    renderTopicSkillPage();
+    return false;
+  }
   const maxMinor = Math.max(...scopedSkills.map((skill) => parseSkillVersionParts(skill.version).minor), 0);
   const nextMinor = maxMinor + 1;
   const skill = {
@@ -2621,6 +2691,7 @@ async function createTopicSkillVersion(summary, prompt, changeLog = null, target
   setSkillNotice(`已发布${skill.targetMaterialTypeName}话题 SKILL ${skill.version}。材料列表会提示可刷新到新版本。`, "success");
   renderTopicSkillPage();
   renderMaterialOverviewPage();
+  return true;
 }
 
 async function createArticleSkillVersion(summary, prompt, changeLog = null) {
@@ -2628,9 +2699,14 @@ async function createArticleSkillVersion(summary, prompt, changeLog = null) {
   const promptValue = String(prompt || "").trim();
   if (!summaryValue || !promptValue) {
     setArticleSkillNotice("请填写版本说明和文章 SKILL 提示词。", "error");
-    return;
+    return false;
   }
   const previousSkill = currentArticleSkill();
+  if (sameSkillPrompt(promptValue, previousSkill?.prompt || "")) {
+    setArticleSkillNotice("文章 SKILL 内容与当前最新版本一致，未创建新版本。", "info");
+    renderArticleSkillPage();
+    return false;
+  }
   const maxMinor = Math.max(...state.articleSkills.map((skill) => parseSkillVersionParts(skill.version).minor), 0);
   const nextMinor = maxMinor + 1;
   const skill = {
@@ -2649,6 +2725,7 @@ async function createArticleSkillVersion(summary, prompt, changeLog = null) {
   setArticleSkillNotice(`已发布文章 SKILL ${skill.version}。新的推荐、生成和刷新都会使用最新版本。`, "success");
   renderArticleSkillPage();
   renderGeneratedArticlePage();
+  return true;
 }
 
 function setSkillNotice(message, tone = "info") {
