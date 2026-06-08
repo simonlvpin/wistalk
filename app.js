@@ -118,6 +118,7 @@ const LEGACY_SYSTEM_VERSION_STATE_KEY = "talktoceo-system-version-state";
 const MAX_UPLOAD_FILES = 10;
 const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
 const SYSTEM_VERSIONS = [
+  { version: "v1.8.51", date: "2026-06-07", updatedAt: "2026-06-07T21:15:00+08:00", title: "生成文章阅读样式优化", changes: ["生成文章页的文章 SKILL 标签改为更小字号、轻字重和浅色底。", "生成文章正文去掉“正文内容”标签，减少阅读干扰。", "文章正文标题改为左对齐，并支持 h2/h3/h4 多级标题层次。"] },
   { version: "v1.8.50", date: "2026-06-07", updatedAt: "2026-06-07T21:05:00+08:00", title: "列表宽度与默认用户筛选优化", changes: ["缩小左侧导航与内容列表之间的留白，让页面横向空间更紧凑。", "材料列表、话题列表、生成文章等左侧列表列宽收窄，右侧主体阅读区更宽。", "管理员进入材料/话题视图时默认只筛选自己的邮箱，需要看其他用户时再手动搜索。"] },
   { version: "v1.8.49", date: "2026-06-07", updatedAt: "2026-06-07T20:55:00+08:00", title: "系统配色重设计", changes: ["重新设计 11 组系统配色，整体改为更现代、更清爽的产品化色彩。", "去掉偏暖黄、土色和脏灰的搭配，改用蓝、青、紫、玫红等更耐看的冷调与高亮色。", "保留原有主题 id，用户已选择的配色不会丢失，只会自动换成新版视觉。"] },
   { version: "v1.8.48", date: "2026-06-07", updatedAt: "2026-06-07T20:45:00+08:00", title: "材料管理标题可编辑", changes: ["材料管理列表新增材料名称输入框，支持直接修改已分析材料标题。", "标题、资料来源、材料类型任一变化时，单行更新按钮才会启用。", "保存材料标题后，材料列表、话题来源和生成文章来源会使用新的材料名称。"] },
@@ -550,7 +551,7 @@ const DEFAULT_ARTICLE_SKILL_PROMPT = `# 文章生成 SKILL.md
 - 不编造 CEO 原文没有出现的事实。
 - 文章要像一篇认真写出来的学习文章，而不是模板填空。
 - 输出正式文章正文，不使用 Markdown 标记；正文用自然段组织，重要金句或关键判断可以加粗。
-- 正文小标题用 <h3>一、具体标题</h3> 这类形式，标题居中展示；不要出现“先讲结论和观点”“展示现象”“分析现象的深层次原因”“解决方式是什么”等模板词。`;
+- 正文标题使用 <h2>、<h3>、<h4> 形成层级：一级标题用 <h2>一、具体标题</h2>，二级标题用 <h3>（一）具体标题</h3>，三级标题用 <h4>1. 具体标题</h4>；标题默认左对齐，不要出现“先讲结论和观点”“展示现象”“分析现象的深层次原因”“解决方式是什么”等模板词。`;
 
 const DEFAULT_ARTICLE_SKILL = {
   id: "article-skill-default-v1",
@@ -5615,7 +5616,7 @@ function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSki
 
 要求：
 1. 只输出JSON。
-2. content 输出正式文章正文的HTML片段，只允许使用 <p>、<strong>、<h3>、<ul>、<ol>、<li>、<blockquote>、<br>。
+2. content 输出正式文章正文的HTML片段，只允许使用 <p>、<strong>、<h2>、<h3>、<h4>、<ul>、<ol>、<li>、<blockquote>、<br>。
 3. content 不要使用 Markdown，不要出现 #、##、###、- ** 这类 Markdown 标记。
 4. content 不要重复输出文章标题，标题只放在 article.title。
 5. 重要金句、关键判断、核心观点可以使用 <strong> 加粗。
@@ -5625,7 +5626,7 @@ function buildGeneratedArticlePrompt(row, idea, articleSkill = currentArticleSki
 9. 文章长度控制在1500字左右，允许1300-1800字浮动。
 10. 必须严格遵循当前文章 SKILL 的结构顺序和写作要求，但不要在正文里机械展示“文章框架”四个字。
 11. 如果当前文章 SKILL 中仍出现 Markdown 写法要求，以本次“正式文章正文HTML片段、不要 Markdown”的要求为最高优先级。
-12. 正文中的小标题必须使用 <h3>一、……</h3>、<h3>二、……</h3> 这样的中文序号，并且标题内容要业务化、具体化；不要直接使用“先讲结论和观点”“展示现象”“分析现象的深层次原因”“解决方式是什么”“从毛泽东思想、毛选角度总结”“总结收尾”这些模板词。
+12. 正文中的标题必须使用层级 HTML：一级标题用 <h2>一、……</h2>，二级标题用 <h3>（一）……</h3>，三级标题用 <h4>1. ……</h4>；标题内容要业务化、具体化、默认左对齐；不要直接使用“先讲结论和观点”“展示现象”“分析现象的深层次原因”“解决方式是什么”“从毛泽东思想、毛选角度总结”“总结收尾”这些模板词。
 13. “马上可以执行的小行动”“学习的感觉在于”这类行动建议和学习提示不要写进正文 content，请分别放到 article.actionTip 和 article.learningTip。
 
 当前文章 SKILL：
@@ -8210,7 +8211,7 @@ function sanitizeRichText(html = "") {
   if (!raw || typeof document === "undefined") {
     return "";
   }
-  const allowedTags = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "A", "BLOCKQUOTE", "H3", "H4"]);
+  const allowedTags = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "A", "BLOCKQUOTE", "H2", "H3", "H4"]);
   const template = document.createElement("template");
   template.innerHTML = raw;
   const cleanNode = (node) => {
@@ -8259,9 +8260,10 @@ function normalizeGeneratedArticleContent(content = "") {
   const templateHeadings = new Set(["先讲结论和观点", "展示现象", "分析现象的深层次原因", "解决方式是什么", "从毛泽东思想、毛选角度总结", "总结收尾"]);
   if (/<[a-z][\s\S]*>/i.test(raw)) {
     const normalizedHtml = raw
-      .replace(/<\/?h[1256]\b[^>]*>/gi, (tag) => tag.startsWith("</") ? "</h3>" : "<h3>")
-      .replace(/<h2\b[^>]*>/gi, "<h3>")
-      .replace(/<\/h2>/gi, "</h3>")
+      .replace(/<h1\b[^>]*>/gi, "<h2>")
+      .replace(/<\/h1>/gi, "</h2>")
+      .replace(/<h[56]\b[^>]*>/gi, "<h4>")
+      .replace(/<\/h[56]>/gi, "</h4>")
       .replace(/<div\b[^>]*>/gi, "<p>")
       .replace(/<\/div>/gi, "</p>");
     return stripGeneratedArticleTemplateHeadings(sanitizeRichText(normalizedHtml), templateHeadings);
@@ -8280,7 +8282,11 @@ function normalizeGeneratedArticleContent(content = "") {
       return `<ul>${lines.map((line) => `<li>${markdownInlineToHtml(line.replace(/^[-*]\s+/, ""))}</li>`).join("")}</ul>`;
     }
     const first = lines[0].replace(/^#{1,6}\s*/, "").trim();
-    if (/^#{1,6}\s+/.test(lines[0]) || (lines.length === 1 && first.length <= 32 && /[：:？?]?$/.test(first))) {
+    if (/^#{1,6}\s+/.test(lines[0])) {
+      const level = Math.min(4, Math.max(2, (lines[0].match(/^#{1,6}/)?.[0].length || 2) + 1));
+      return `<h${level}>${markdownInlineToHtml(first)}</h${level}>`;
+    }
+    if (lines.length === 1 && first.length <= 32 && /[：:？?]?$/.test(first)) {
       return `<h3>${markdownInlineToHtml(first)}</h3>`;
     }
     return `<p>${markdownInlineToHtml(lines.map((line) => line.replace(/^[-*]\s+/, "")).join(" "))}</p>`;
@@ -8294,7 +8300,7 @@ function stripGeneratedArticleTemplateHeadings(html = "", templateHeadings = new
   }
   const wrapper = document.createElement("div");
   wrapper.innerHTML = html;
-  wrapper.querySelectorAll("h3,h4,strong").forEach((node) => {
+  wrapper.querySelectorAll("h2,h3,h4,strong").forEach((node) => {
     const text = String(node.textContent || "")
       .replace(/[：:]/g, "")
       .replace(/^[一二三四五六七八九十]+[、.．]\s*/, "")
@@ -9016,7 +9022,6 @@ function renderGeneratedArticlePage() {
             <div class="generated-core-editor" id="generatedArticleCore" contenteditable="${isEditingArticle ? "true" : "false"}">${escapeHtml(active.coreViewpoint || "暂无核心观点")}</div>
           </section>
           <section class="generated-field">
-            <span class="generated-field-label">正文内容</span>
             <div class="generated-content-editor" id="generatedArticleContent" contenteditable="${isEditingArticle ? "true" : "false"}">${extractedArticle.contentHtml}</div>
           </section>
           ${renderGeneratedArticleTips(displayArticleTips)}
